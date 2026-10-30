@@ -17,9 +17,17 @@ import { refreshPresence } from '../library/files';
 import { coveredMs, listenedFraction } from '../library/ranges';
 import { formatClock, formatHours } from '../notes/capture';
 import type { RootStackParamList } from '../navigation/types';
+import { AppPressable } from '../ui/AppPressable';
+import { ArtworkAvatar } from '../ui/ArtworkAvatar';
 import { BottomNav } from '../ui/BottomNav';
+import { displayTitle } from '../ui/displayTitle';
+import { InlineBanner } from '../ui/InlineBanner';
+import { MiniNowPlayingBar } from '../ui/MiniNowPlayingBar';
+import { NavigationMenu } from '../ui/NavigationMenu';
+import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ScreenHeader } from '../ui/ScreenHeader';
-import { colors, radii, spacing } from '../ui/theme';
+import { actionHaptic } from '../ui/haptics';
+import { colors, elevation, radii, spacing } from '../ui/theme';
 
 type Row = {
   item: AudioItem;
@@ -74,6 +82,7 @@ export function LibraryScreen({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const handle = setTimeout(() => setApplied(query), 200);
@@ -100,6 +109,7 @@ export function LibraryScreen({
   }, [rows]);
 
   function openItem(item: AudioItem): void {
+    actionHaptic();
     onPlayerContext(item.id, item.title);
     navigation.navigate('Player', { itemId: item.id });
   }
@@ -134,16 +144,49 @@ export function LibraryScreen({
   }
 
   return (
-    <View style={styles.screen}>
+    <ScreenBackdrop>
+      <View style={styles.screen}>
       <ScreenHeader
         title="AudioNote"
         subtitle={`Today · ${formatHours(todayMs)} listened`}
+        onMenu={() => setMenuOpen(true)}
         actions={[
           {
             icon: 'add-circle-outline',
             label: 'Import audio',
             disabled: busy,
             onPress: () => void onImport(),
+          },
+        ]}
+      />
+      <NavigationMenu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        items={[
+          {
+            icon: 'folder-open-outline',
+            label: 'Import audio',
+            detail: 'Add files from your device',
+            disabled: busy,
+            onPress: () => void onImport(),
+          },
+          {
+            icon: 'headset-outline',
+            label: 'Now playing',
+            detail: playerTitle ? displayTitle(playerTitle, 32) : 'Open a lesson first',
+            disabled: !playerItemId,
+            onPress: () => {
+              if (playerItemId) {
+                navigation.navigate('Player', { itemId: playerItemId });
+              }
+            },
+          },
+          {
+            icon: 'time-outline',
+            label: "Today's listening",
+            detail: formatHours(todayMs),
+            disabled: true,
+            onPress: () => undefined,
           },
         ]}
       />
@@ -171,31 +214,42 @@ export function LibraryScreen({
           <Text style={styles.importText}>{busy ? 'Working…' : 'Import'}</Text>
         </Pressable>
       </View>
-      {status ? <Text style={styles.status}>{status}</Text> : null}
+      {status ? <InlineBanner message={status} tone="success" onDismiss={() => setStatus(null)} /> : null}
+      {playerItemId && playerTitle ? (
+        <MiniNowPlayingBar
+          title={playerTitle}
+          onOpen={() => navigation.navigate('Player', { itemId: playerItemId })}
+        />
+      ) : null}
       <FlashList
         data={rows}
         keyExtractor={(row) => row.item.id}
         style={styles.list}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
-          resume.length ? (
-            <View style={styles.resumeBlock}>
-              <Text style={styles.section}>Continue listening</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.resumeScroll}>
-                {resume.map((item) => (
-                  <Pressable key={item.id} onPress={() => openItem(item)} style={styles.resumeCard}>
-                    <View style={styles.resumeIcon}>
-                      <Ionicons name="play" size={16} color={colors.accent} />
-                    </View>
-                    <Text numberOfLines={2} style={styles.resumeTitle}>
-                      {item.title}
-                    </Text>
-                    <Text style={styles.meta}>Resume at {formatClock(item.positionMs)}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-          ) : null
+          <>
+            {resume.length ? (
+              <View style={styles.resumeBlock}>
+                <Text style={styles.section}>Continue listening</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.resumeScroll}>
+                  {resume.map((item) => (
+                    <AppPressable key={item.id} haptic onPress={() => openItem(item)} style={styles.resumeCard}>
+                      <ArtworkAvatar title={item.title} size={36} />
+                      <Text numberOfLines={2} style={styles.resumeTitle}>
+                        {displayTitle(item.title)}
+                      </Text>
+                      <Text style={styles.meta}>Resume at {formatClock(item.positionMs)}</Text>
+                    </AppPressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+            {rows.length ? (
+              <Text style={styles.listHeading}>
+                All lessons · {rows.length}
+              </Text>
+            ) : null}
+          </>
         }
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
@@ -212,19 +266,30 @@ export function LibraryScreen({
           const { item, heard } = row;
           const positionFraction =
             item.durationMs && item.durationMs > 0 ? Math.min(1, item.positionMs / item.durationMs) : 0;
+          const isActive = playerItemId === item.id;
           return (
-            <View style={styles.card}>
-              <Pressable accessibilityRole="button" onPress={() => openItem(item)} style={styles.cardMain}>
+            <View style={[styles.card, isActive && styles.cardActive, elevation.card]}>
+              <AppPressable accessibilityRole="button" haptic onPress={() => openItem(item)} style={styles.cardMain}>
                 <View style={styles.cardRow}>
+                  <ArtworkAvatar title={item.title} size={52} />
                   <View style={styles.cardBody}>
-                    <Text numberOfLines={2} style={styles.cardTitle}>
-                      {item.title}
-                    </Text>
-                    <Text style={styles.meta}>
-                      {(item.format ?? 'audio').toUpperCase()}
-                      {item.durationMs ? ` · ${formatClock(item.durationMs)}` : ''}
-                      {item.durationMs ? ` · ${Math.round(heard * 100)}% heard` : ''}
-                    </Text>
+                    <View style={styles.titleRow}>
+                      <Text numberOfLines={2} style={styles.cardTitle}>
+                        {displayTitle(item.title)}
+                      </Text>
+                      {isActive ? (
+                        <View style={styles.nowBadge}>
+                          <Text style={styles.nowBadgeText}>Playing</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <View style={styles.metaRow}>
+                      <Text style={styles.formatPill}>{(item.format ?? 'audio').toUpperCase()}</Text>
+                      <Text style={styles.meta}>
+                        {item.durationMs ? formatClock(item.durationMs) : '—'}
+                        {item.durationMs ? ` · ${Math.round(heard * 100)}% heard` : ''}
+                      </Text>
+                    </View>
                     <Text style={styles.positionMeta}>Position · {formatClock(item.positionMs)}</Text>
                     <View style={styles.track}>
                       <View style={[styles.heard, { width: `${heard * 100}%` }]} />
@@ -237,11 +302,9 @@ export function LibraryScreen({
                       </View>
                     ) : null}
                   </View>
-                  <View style={styles.playBadge}>
-                    <Ionicons name="play" size={20} color={colors.background} />
-                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.muted} style={styles.chevron} />
                 </View>
-              </Pressable>
+              </AppPressable>
               <View style={styles.actions}>
                 {item.missing ? (
                   <Pressable
@@ -295,7 +358,8 @@ export function LibraryScreen({
           }
         }}
       />
-    </View>
+      </View>
+    </ScreenBackdrop>
   );
 }
 
@@ -346,11 +410,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  status: {
+  listHeading: {
     color: colors.muted,
-    fontSize: 14,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
   },
   list: {
     flex: 1,
@@ -374,19 +440,12 @@ const styles = StyleSheet.create({
   },
   resumeCard: {
     width: 168,
-    minHeight: 112,
+    minHeight: 120,
     backgroundColor: colors.cardRaised,
     borderRadius: radii.lg,
     padding: spacing.md,
     gap: spacing.sm,
-  },
-  resumeIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginRight: spacing.sm,
   },
   resumeTitle: {
     color: colors.text,
@@ -420,6 +479,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
   },
+  cardActive: {
+    borderColor: colors.accent,
+    backgroundColor: '#1A2838',
+  },
   cardMain: {
     gap: spacing.sm,
   },
@@ -432,7 +495,41 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 4,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  nowBadge: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 2,
+  },
+  nowBadgeText: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  formatPill: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '700',
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.pill,
+    overflow: 'hidden',
+  },
   cardTitle: {
+    flex: 1,
     color: colors.text,
     fontSize: 17,
     fontWeight: '600',
@@ -475,14 +572,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  playBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
+  chevron: {
+    marginTop: 14,
   },
   actions: {
     flexDirection: 'row',

@@ -14,7 +14,7 @@ import {
   rangesForItem,
 } from '../db/library';
 import type { AudioItem, Note } from '../db/types';
-import type { ListenRange } from '../library/ranges';
+import { listenedFraction, type ListenRange } from '../library/ranges';
 import { locateAudioFile } from '../library/import';
 import { createId } from '../media/identity';
 import { formatClock, notePositionMs } from '../notes/capture';
@@ -34,10 +34,16 @@ import {
   writeSkips,
   type SkipSettings,
 } from '../playback/engine';
+import { AppPressable } from '../ui/AppPressable';
+import { ArtworkAvatar } from '../ui/ArtworkAvatar';
 import { BottomNav } from '../ui/BottomNav';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
+import { displayTitle } from '../ui/displayTitle';
+import { InlineBanner } from '../ui/InlineBanner';
 import { ScrubBar } from '../ui/ScrubBar';
+import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ScreenHeader } from '../ui/ScreenHeader';
+import { actionHaptic } from '../ui/haptics';
 import { colors, radii, spacing } from '../ui/theme';
 
 type PlayerScreenProps = NativeStackScreenProps<RootStackParamList, 'Player'> & {
@@ -201,9 +207,11 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     loop.aMs != null && loop.bMs != null
       ? `${formatClock(loop.aMs)} – ${formatClock(loop.bMs)}`
       : 'None';
+  const heardFraction = listenedFraction(heard, durationMs);
 
   if (!item) {
     return (
+      <ScreenBackdrop>
       <View style={styles.screen}>
         <ScreenHeader title="Lesson unavailable" onBack={() => navigation.goBack()} backLabel="Library" />
         <Text style={styles.message}>This lesson is no longer in the library.</Text>
@@ -215,18 +223,31 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           onPlayer={() => navigation.navigate('Player', { itemId })}
         />
       </View>
+      </ScreenBackdrop>
     );
   }
 
   return (
+    <ScreenBackdrop>
     <View style={styles.screen}>
       <ScreenHeader
-        title={item.title}
+        title={displayTitle(item.title)}
         subtitle={missing ? 'File missing' : `${speedSummary} · ${formatClock(positionMs)} / ${durationMs ? formatClock(durationMs) : '—'}`}
         onBack={() => navigation.goBack()}
         backLabel="Library"
       />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.hero}>
+          <ArtworkAvatar title={item.title} size={88} />
+          <View style={styles.heroMeta}>
+            <Text style={styles.heroTitle}>{displayTitle(item.title, 52)}</Text>
+            <View style={styles.heroChips}>
+              <Text style={styles.heroChip}>{(item.format ?? 'audio').toUpperCase()}</Text>
+              <Text style={styles.heroChip}>{Math.round(heardFraction * 100)}% heard</Text>
+              <Text style={styles.heroChip}>{notes.length} notes</Text>
+            </View>
+          </View>
+        </View>
         <View style={styles.scrubBlock}>
           <ScrubBar
             durationMs={durationMs}
@@ -264,7 +285,9 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             </Text>
           </View>
         ) : null}
-        {message ? <Text style={styles.message}>{message}</Text> : null}
+        {message ? (
+          <InlineBanner message={message} tone="error" onDismiss={() => setMessage(null)} />
+        ) : null}
         {missing ? (
           <Pressable accessibilityRole="button" onPress={() => void onLocate()} style={styles.primary}>
             <Ionicons name="locate-outline" size={18} color={colors.background} />
@@ -285,9 +308,17 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
               <Text style={styles.stepText}>+</Text>
             </Pressable>
           </View>
-          <Pressable accessibilityRole="button" onPress={togglePlayback} style={styles.play}>
+          <AppPressable
+            accessibilityRole="button"
+            haptic
+            onPress={() => {
+              actionHaptic();
+              togglePlayback();
+            }}
+            style={styles.play}
+          >
             <Ionicons name={playing ? 'pause' : 'play'} size={28} color={colors.background} />
-          </Pressable>
+          </AppPressable>
           <View style={styles.skipControl}>
             <Pressable accessibilityRole="button" onPress={() => changeSkip('forwardMs', -5000)} style={styles.step}>
               <Text style={styles.stepText}>−</Text>
@@ -389,9 +420,17 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
               style={styles.noteInput}
               multiline
             />
-            <Pressable accessibilityRole="button" onPress={addNote} style={styles.addNote}>
+            <AppPressable
+              accessibilityRole="button"
+              haptic
+              onPress={() => {
+                actionHaptic();
+                addNote();
+              }}
+              style={styles.addNote}
+            >
               <Text style={styles.addNoteText}>Add</Text>
-            </Pressable>
+            </AppPressable>
           </View>
           {notes.length === 0 ? (
             <Text style={styles.noteEmpty}>Notes land a few seconds before the moment you tap Add.</Text>
@@ -429,6 +468,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
         onPlayer={() => navigation.navigate('Player', { itemId })}
       />
     </View>
+    </ScreenBackdrop>
   );
 }
 
@@ -441,6 +481,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
     gap: spacing.md,
+  },
+  hero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  heroMeta: {
+    flex: 1,
+    gap: spacing.sm,
+  },
+  heroTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 26,
+  },
+  heroChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  heroChip: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    overflow: 'hidden',
   },
   scrubBlock: {
     backgroundColor: colors.card,
