@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radii, spacing } from './theme';
+import { colors, elevation, radii, spacing } from './theme';
 
 export type BottomNavTab = 'library' | 'player';
 
@@ -19,7 +19,7 @@ export function BottomNav({ active, playerItemId, playerTitle, onLibrary, onPlay
   const playerEnabled = playerItemId != null;
 
   return (
-    <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+    <View style={[styles.bar, elevation.card, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       <Pressable
         accessibilityRole="tab"
         accessibilityState={{ selected: active === 'library' }}

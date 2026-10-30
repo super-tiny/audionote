@@ -16,10 +16,18 @@ type ScreenHeaderProps = {
   subtitle?: string;
   onBack?: () => void;
   backLabel?: string;
+  onMenu?: () => void;
   actions?: HeaderAction[];
 };
 
-export function ScreenHeader({ title, subtitle, onBack, backLabel = 'Back', actions = [] }: ScreenHeaderProps) {
+export function ScreenHeader({
+  title,
+  subtitle,
+  onBack,
+  backLabel = 'Back',
+  onMenu,
+  actions = [],
+}: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -29,6 +37,10 @@ export function ScreenHeader({ title, subtitle, onBack, backLabel = 'Back', acti
           <Pressable accessibilityRole="button" accessibilityLabel={backLabel} onPress={onBack} style={styles.back}>
             <Ionicons name="chevron-back" size={24} color={colors.accent} />
             <Text style={styles.backText}>{backLabel}</Text>
+          </Pressable>
+        ) : onMenu ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Open menu" onPress={onMenu} style={styles.menu}>
+            <Ionicons name="menu" size={26} color={colors.text} />
           </Pressable>
         ) : (
           <View style={styles.backPlaceholder} />
@@ -83,6 +95,13 @@ const styles = StyleSheet.create({
   },
   backPlaceholder: {
     width: 1,
+  },
+  menu: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -8,
   },
   actions: {
     flexDirection: 'row',

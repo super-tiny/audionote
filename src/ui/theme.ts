@@ -28,3 +28,13 @@ export const radii = {
   lg: 16,
   pill: 999,
 };
+
+export const elevation = {
+  card: {
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+};
