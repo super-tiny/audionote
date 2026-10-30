@@ -42,6 +42,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # v3's default includes the removed "tools" package, and sdkmanager
+          # exits 1 with "Failed to find package 'tools'".
+          packages: platform-tools
 
       - name: Install Android SDK packages
         run: |

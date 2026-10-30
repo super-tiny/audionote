@@ -36,7 +36,7 @@ Typecheck resolves the published player declarations. `tsconfig.json` clears Exp
 | Marketing version | `APP_VERSION`, or `package.json` `version` (`0.1.0`) |
 | Android `versionCode` / iOS `CFBundleVersion` | `ANDROID_VERSION_CODE` / `IOS_BUILD_NUMBER`. CI sets both to `github.run_number`. Tag `v1.2.3` sets the marketing version to `1.2.3`. |
 
-iOS deployment target is 16.4, which matches Expo SDK 58. Android compile SDK 37, target SDK 36, build-tools 37.0.0, NDK 27.1.12297006, CMake 3.30.5, JDK 17. Hermes and the New Architecture are on. The platform package is `platforms;android-37` on older sdkmanager releases and `platforms;android-37.0` on the current Android CLI. CI installs whichever exists and links `platforms/android-37` when only the dotted directory is present.
+iOS deployment target is 16.4, which matches Expo SDK 58. Android compile SDK 37, target SDK 36, build-tools 37.0.0, NDK 27.1.12297006, CMake 3.30.5, JDK 17. Hermes and the New Architecture are on. The platform package is `platforms;android-37` on older sdkmanager releases and `platforms;android-37.0` on the current Android CLI. CI installs whichever exists and links `platforms/android-37` when only the dotted directory is present. `android-actions/setup-android@v3` is given `packages: platform-tools` only. Its default also requests the obsolete `tools` package, which the SDK repository no longer serves.
 
 Release Android builds do not run R8. The player ships no consumer ProGuard rules, and shrinking a first bundle before those rules exist would risk stripping playback. `expo-build-properties` sets `enableMinifyInReleaseBuilds` to false.
 
