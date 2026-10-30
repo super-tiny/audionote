@@ -108,7 +108,7 @@ JavaScript export (`npm run export`) embeds the Hermes bundle Metro produces for
 
 ## Library and playback
 
-Lessons stay in their original location. Import uses `ACTION_OPEN_DOCUMENT` on Android and `UIDocumentPicker` with `asCopy: false` on iOS. Android keeps a persistable read grant on the `content://` URI. iOS stores a base64 security-scoped bookmark and resolves it to a file URL before playback. Re-importing the same header fingerprint refreshes that grant on the existing row, so notes remain. Locate file does the same for a chosen row when the URI no longer opens.
+Lessons stay in their original location. Import uses `ACTION_OPEN_DOCUMENT` on Android and `UIDocumentPicker` with `asCopy: false` on iOS. The picker delegate is its own `NSObject`, because Expo's `Module` class cannot conform to `UIDocumentPickerDelegate`. Android keeps a persistable read grant on the `content://` URI. iOS stores a base64 security-scoped bookmark and resolves it to a file URL before playback. Re-importing the same header fingerprint refreshes that grant on the existing row, so notes remain. Locate file does the same for a chosen row when the URI no longer opens.
 
 Duration is read from the first or last 512KB: an M4A `mvhd` atom, an MP3 Xing frame count, or a CBR estimate from the MPEG frame length. The player later replaces that hint with its own duration and does not overwrite the format column. M4A/AAC is the format to prefer for a multi-hour lesson. VBR MP3 without a Xing header can seek and measure poorly.
 

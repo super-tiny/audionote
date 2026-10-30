@@ -2,8 +2,9 @@ import ExpoModulesCore
 import UIKit
 import UniformTypeIdentifiers
 
-public class AudioNoteFileAccessModule: Module, UIDocumentPickerDelegate {
+public class AudioNoteFileAccessModule: Module {
   private var pending: Promise?
+  private var pickerDelegate: AudioPickerDelegate?
   private var accessed: [String: URL] = [:]
 
   public func definition() -> ModuleDefinition {
@@ -17,9 +18,19 @@ public class AudioNoteFileAccessModule: Module, UIDocumentPickerDelegate {
         throw MissingViewController()
       }
       self.pending = promise
+      let delegate = AudioPickerDelegate(
+        onPick: { [weak self] urls in
+          self?.completePick(urls: urls)
+        },
+        onCancel: { [weak self] in
+          self?.completePick(urls: nil)
+        }
+      )
+      self.pickerDelegate = delegate
       let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.audio], asCopy: false)
       picker.allowsMultipleSelection = true
-      picker.delegate = self
+      picker.delegate = delegate
+      picker.presentationController?.delegate = delegate
       picker.modalPresentationStyle = .pageSheet
       controller.present(picker, animated: true)
     }.runOnQueue(.main)
@@ -56,24 +67,18 @@ public class AudioNoteFileAccessModule: Module, UIDocumentPickerDelegate {
     }
   }
 
-  public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+  private func completePick(urls: [URL]?) {
     let promise = pending
     pending = nil
+    pickerDelegate = nil
     guard let promise else {
       return
     }
-    let files = urls.map { describe(url: $0) }
-    if files.isEmpty {
+    guard let urls, !urls.isEmpty else {
       promise.resolve(PickAudioResult(canceled: true, files: []))
-    } else {
-      promise.resolve(PickAudioResult(canceled: false, files: files))
+      return
     }
-  }
-
-  public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-    let promise = pending
-    pending = nil
-    promise?.resolve(PickAudioResult(canceled: true, files: []))
+    promise.resolve(PickAudioResult(canceled: false, files: urls.map { describe(url: $0) }))
   }
 
   private func describe(url: URL) -> PickedAudioFile {
@@ -97,6 +102,29 @@ public class AudioNoteFileAccessModule: Module, UIDocumentPickerDelegate {
   }
 }
 
+/// UIDocumentPickerDelegate requires NSObject. Expo's Module is a plain Swift class, so the picker delegate is separate and retained until the sheet closes.
+private final class AudioPickerDelegate: NSObject, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
+  private let onPick: ([URL]) -> Void
+  private let onCancel: () -> Void
+
+  init(onPick: @escaping ([URL]) -> Void, onCancel: @escaping () -> Void) {
+    self.onPick = onPick
+    self.onCancel = onCancel
+  }
+
+  func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+    onPick(urls)
+  }
+
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    onCancel()
+  }
+
+  func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+    onCancel()
+  }
+}
+
 internal struct PickAudioResult: Record {
   @Field var canceled: Bool = false
   @Field var files: [PickedAudioFile] = []
@@ -116,19 +144,19 @@ internal struct ResolvedBookmark: Record {
   @Field var stale: Bool = false
 }
 
-internal class PickerInProgress: Exception {
+internal final class PickerInProgress: Exception, @unchecked Sendable {
   override var reason: String {
     "A file picker is already open"
   }
 }
 
-internal class MissingViewController: Exception {
+internal final class MissingViewController: Exception, @unchecked Sendable {
   override var reason: String {
     "Could not find a view controller to present the file picker"
   }
 }
 
-internal class UnreadableAudio: Exception {
+internal final class UnreadableAudio: Exception, @unchecked Sendable {
   override var reason: String {
     "Could not read the selected audio"
   }
