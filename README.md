@@ -1,6 +1,6 @@
 # AudioNote
 
-Offline player for long local lessons. Progress and notes stay on the device. This repo currently builds the app shell and the Android and iOS bundles.
+Offline player for long local lessons. Import keeps a reference to the original file. Resume position, listened ranges, and timed notes stay on the device. Android and iOS bundles are built in GitHub Actions.
 
 Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -53,7 +53,7 @@ Without signing secrets the Android release APK is signed with the debug keystor
 
 | Workflow | Result |
 | --- | --- |
-| CI | Typecheck and a JavaScript bundle export |
+| CI | Unit tests, typecheck, and a JavaScript bundle export |
 | Mobile bundles | APK, AAB, and IPA artifacts. Tag `v*` also publishes a GitHub Release |
 | EAS bundle | Manual. Needs the `EXPO_TOKEN` secret and a linked Expo project |
 

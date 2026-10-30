@@ -1,11 +1,16 @@
 import TrackPlayer, { Event, PlayerCommand } from '@rntp/player';
 
+import { ensureDatabase } from '../db/open';
+import { writeSkips, readSkips } from './engine';
+import { flushProgress, startProgressTicker } from './persist';
+
 /**
  * Process-scoped playback setup. Registered from the entry file so lock-screen
  * and headset events still have a player after the UI unmounts.
  */
 export function registerPlaybackSession(): void {
   TrackPlayer.registerPlaybackSession(() => {
+    ensureDatabase();
     TrackPlayer.setupPlayer({
       contentType: 'speech',
       handleAudioBecomingNoisy: true,
@@ -15,6 +20,7 @@ export function registerPlaybackSession(): void {
       },
     });
 
+    const skips = readSkips();
     TrackPlayer.setCommands({
       capabilities: [
         PlayerCommand.PlayPause,
@@ -22,8 +28,8 @@ export function registerPlaybackSession(): void {
         PlayerCommand.SkipBackward,
         PlayerCommand.SkipForward,
       ],
-      backwardInterval: 15,
-      forwardInterval: 30,
+      backwardInterval: Math.round(skips.backMs / 1000),
+      forwardInterval: Math.round(skips.forwardMs / 1000),
     });
 
     TrackPlayer.addEventListener(Event.PlaybackError, ({ code }) => {
@@ -31,5 +37,13 @@ export function registerPlaybackSession(): void {
         TrackPlayer.retry();
       }
     });
+    TrackPlayer.addEventListener(Event.IsPlayingChanged, ({ playing }) => {
+      if (!playing) {
+        flushProgress();
+      }
+    });
+    startProgressTicker();
   });
 }
+
+export { writeSkips };

@@ -1,0 +1,13 @@
+{
+  "name": "audionote-file-access",
+  "version": "0.1.0",
+  "description": "Persisted audio file access for AudioNote. Android keeps a Storage Access Framework grant. iOS keeps a security-scoped bookmark.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}
