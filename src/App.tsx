@@ -1,75 +1,46 @@
-import { FlashList } from '@shopify/flash-list';
-import { useIsPlaying } from '@rntp/player';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { AppState, StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { ensureDatabase } from './db/open';
+import { LibraryScreen } from './screens/LibraryScreen';
+import { PlayerScreen } from './screens/PlayerScreen';
+import { flushProgress } from './playback/persist';
+
+type Route = { name: 'library' } | { name: 'player'; itemId: string };
 
 export default function App() {
-  const playing = useIsPlaying();
-  const [databaseReady, setDatabaseReady] = useState(false);
-  const [databaseError, setDatabaseError] = useState<string | null>(null);
+  const [route, setRoute] = useState<Route>({ name: 'library' });
 
   useEffect(() => {
-    try {
-      ensureDatabase();
-      setDatabaseReady(true);
-    } catch (error) {
-      setDatabaseError(error instanceof Error ? error.message : 'Could not open the library database.');
-    }
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') {
+        flushProgress();
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
-  const status = databaseError
-    ? databaseError
-    : databaseReady
-      ? playing
-        ? 'Playing'
-        : 'Player ready'
-      : 'Opening library…';
-
   return (
-    <View style={styles.screen}>
+    <GestureHandlerRootView style={styles.root}>
       <StatusBar style="light" />
-      <View style={styles.header}>
-        <Text style={styles.title}>AudioNote</Text>
-        <Text style={styles.status}>{status}</Text>
-      </View>
-      <FlashList
-        data={[]}
-        renderItem={() => null}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No audio yet. Library import arrives in a later milestone.</Text>
-        }
-      />
-    </View>
+      {route.name === 'library' ? (
+        <LibraryScreen onOpen={(itemId) => setRoute({ name: 'player', itemId })} />
+      ) : (
+        <PlayerScreen
+          itemId={route.itemId}
+          onBack={() => {
+            flushProgress();
+            setRoute({ name: 'library' });
+          }}
+        />
+      )}
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  root: {
     flex: 1,
-    backgroundColor: '#0F1419',
-  },
-  header: {
-    paddingTop: 64,
-    paddingHorizontal: 24,
-    paddingBottom: 16,
-    gap: 8,
-  },
-  title: {
-    color: '#F4F7FB',
-    fontSize: 32,
-    fontWeight: '700',
-  },
-  status: {
-    color: '#9BB0C4',
-    fontSize: 16,
-  },
-  empty: {
-    color: '#C5D2DE',
-    fontSize: 16,
-    lineHeight: 24,
-    paddingHorizontal: 24,
   },
 });
