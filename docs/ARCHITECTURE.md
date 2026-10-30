@@ -102,7 +102,7 @@ The script writes the decoded keystore under `.keystore/`, which is gitignored. 
 
 ## Native modules in the binary
 
-Autolinking includes every native dependency in `package.json`, plus packages under `modules/`. `audionote-file-access` lives in both places: Metro resolves the `file:` dependency, and autolinking sees one module because the `node_modules` entry and `modules/audionote-file-access` are the same directory. The release binary links the player, SQLite, the file system, gesture handler, Reanimated, FlashList, and this file-access module.
+Autolinking includes every native dependency in `package.json`, plus packages under `modules/`. `audionote-file-access` lives in both places: Metro resolves the `file:` dependency, and autolinking sees one module because the `node_modules` entry and `modules/audionote-file-access` are the same directory. The Android library sets `version` in its `build.gradle`; the Expo module plugin will not configure the project without it. The release binary links the player, SQLite, the file system, gesture handler, Reanimated, FlashList, and this file-access module.
 
 JavaScript export (`npm run export`) embeds the Hermes bundle Metro produces for both platforms. It does not compile Kotlin or Swift. The mobile-bundles workflow is what proves the native project links and archives. `babel.config.js` loads `babel-preset-expo` and the Reanimated plugin, so `babel-preset-expo` is a direct dependency. Metro does not see the copy nested under `expo`.
 
