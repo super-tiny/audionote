@@ -116,8 +116,12 @@ function readMp3(bytes: Uint8Array, fileSize: number | null): number | null {
     }
 
     if (fileSize && fileSize > index) {
-      const bitrate = bitrateKbps * 1000;
-      return accept(((fileSize - index) * 8 * 1000) / bitrate);
+      const padding = (header >> 9) & 0x1;
+      const frameLength = Math.floor((144 * bitrateKbps * 1000) / sampleRate) + padding;
+      if (frameLength > 0) {
+        const frames = Math.floor((fileSize - index) / frameLength);
+        return accept((frames * 1152 * 1000) / sampleRate);
+      }
     }
     return null;
   }
