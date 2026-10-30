@@ -19,10 +19,9 @@ import { formatClock, formatHours } from '../notes/capture';
 import type { RootStackParamList } from '../navigation/types';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
-import { BottomNav } from '../ui/BottomNav';
 import { displayTitle } from '../ui/displayTitle';
 import { InlineBanner } from '../ui/InlineBanner';
-import { MiniNowPlayingBar } from '../ui/MiniNowPlayingBar';
+import { PlaybackDock } from '../ui/PlaybackDock';
 import { NavigationMenu } from '../ui/NavigationMenu';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ScreenHeader } from '../ui/ScreenHeader';
@@ -215,17 +214,14 @@ export function LibraryScreen({
         </Pressable>
       </View>
       {status ? <InlineBanner message={status} tone="success" onDismiss={() => setStatus(null)} /> : null}
-      {playerItemId && playerTitle ? (
-        <MiniNowPlayingBar
-          title={playerTitle}
-          onOpen={() => navigation.navigate('Player', { itemId: playerItemId })}
-        />
-      ) : null}
       <FlashList
         data={rows}
         keyExtractor={(row) => row.item.id}
         style={styles.list}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          playerItemId ? styles.listContentWithDock : null,
+        ]}
         ListHeaderComponent={
           <>
             {resume.length ? (
@@ -347,17 +343,13 @@ export function LibraryScreen({
           );
         }}
       />
-      <BottomNav
-        active="library"
-        playerItemId={playerItemId}
-        playerTitle={playerTitle}
-        onLibrary={() => navigation.navigate('Library')}
-        onPlayer={() => {
-          if (playerItemId) {
-            navigation.navigate('Player', { itemId: playerItemId });
-          }
-        }}
-      />
+      {playerItemId && playerTitle ? (
+        <PlaybackDock
+          variant="mini"
+          title={playerTitle}
+          onOpen={() => navigation.navigate('Player', { itemId: playerItemId })}
+        />
+      ) : null}
       </View>
     </ScreenBackdrop>
   );
@@ -424,6 +416,9 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
+  },
+  listContentWithDock: {
+    paddingBottom: 96,
   },
   resumeBlock: {
     marginBottom: spacing.lg,

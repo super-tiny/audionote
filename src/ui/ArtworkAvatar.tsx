@@ -10,7 +10,7 @@ type ArtworkAvatarProps = {
 
 export function ArtworkAvatar({ title, size = 48 }: ArtworkAvatarProps) {
   const backgroundColor = titleAccentColor(displayTitle(title));
-  const fontSize = Math.max(12, Math.round(size * 0.34));
+  const fontSize = Math.min(48, Math.max(12, Math.round(size * 0.34)));
 
   return (
     <View
