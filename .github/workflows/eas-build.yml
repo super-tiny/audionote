@@ -1,0 +1,61 @@
+name: EAS bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform
+        required: true
+        type: choice
+        options:
+          - android
+          - ios
+          - all
+      profile:
+        description: eas.json profile
+        required: true
+        default: preview
+        type: choice
+        options:
+          - development
+          - preview
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  eas:
+    name: EAS ${{ inputs.profile }} (${{ inputs.platform }})
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Require Expo token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [[ -z "${EXPO_TOKEN}" ]]; then
+            echo "Set the EXPO_TOKEN repository secret. Create it with: npx eas-cli login && npx eas-cli token:create" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build on EAS
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli@latest build \
+            --platform "${{ inputs.platform }}" \
+            --profile "${{ inputs.profile }}" \
+            --non-interactive \
+            --no-wait
