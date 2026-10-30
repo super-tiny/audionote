@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIsPlaying, useProgress } from '@rntp/player';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -12,10 +14,11 @@ import {
   rangesForItem,
 } from '../db/library';
 import type { AudioItem, Note } from '../db/types';
-import type { ListenRange } from '../library/ranges';
+import { listenedFraction, type ListenRange } from '../library/ranges';
 import { locateAudioFile } from '../library/import';
 import { createId } from '../media/identity';
 import { formatClock, notePositionMs } from '../notes/capture';
+import type { RootStackParamList } from '../navigation/types';
 import {
   SLEEP_MINUTES,
   SPEEDS,
@@ -31,12 +34,22 @@ import {
   writeSkips,
   type SkipSettings,
 } from '../playback/engine';
+import { AppPressable } from '../ui/AppPressable';
+import { ArtworkAvatar } from '../ui/ArtworkAvatar';
+import { BottomNav } from '../ui/BottomNav';
+import { CollapsibleSection } from '../ui/CollapsibleSection';
+import { displayTitle } from '../ui/displayTitle';
+import { InlineBanner } from '../ui/InlineBanner';
 import { ScrubBar } from '../ui/ScrubBar';
-import { colors } from '../ui/theme';
+import { ScreenBackdrop } from '../ui/ScreenBackdrop';
+import { ScreenHeader } from '../ui/ScreenHeader';
+import { actionHaptic } from '../ui/haptics';
+import { colors, radii, spacing } from '../ui/theme';
 
-type PlayerScreenProps = {
-  itemId: string;
-  onBack: () => void;
+type PlayerScreenProps = NativeStackScreenProps<RootStackParamList, 'Player'> & {
+  playerItemId: string | null;
+  playerTitle: string | null;
+  onPlayerContext: (itemId: string | null, title: string | null) => void;
 };
 
 type LoopPoints = {
@@ -44,7 +57,8 @@ type LoopPoints = {
   bMs: number | null;
 };
 
-export function PlayerScreen({ itemId, onBack }: PlayerScreenProps) {
+export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScreenProps) {
+  const { itemId } = route.params;
   const playing = useIsPlaying();
   const progress = useProgress(0.25);
   const [item, setItem] = useState<AudioItem | null>(() => getItem(itemId));
@@ -62,6 +76,10 @@ export function PlayerScreen({ itemId, onBack }: PlayerScreenProps) {
   const loopGuard = useRef(false);
   const skipsRef = useRef(skips);
   skipsRef.current = skips;
+
+  useEffect(() => {
+    onPlayerContext(itemId, item?.title ?? null);
+  }, [itemId, item?.title, onPlayerContext]);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,197 +200,275 @@ export function PlayerScreen({ itemId, onBack }: PlayerScreenProps) {
     }
   }
 
+  const speedSummary = `${speed}×`;
+  const sleepSummary =
+    sleepMinutes != null ? `${sleepMinutes} min` : 'Off';
+  const loopSummary =
+    loop.aMs != null && loop.bMs != null
+      ? `${formatClock(loop.aMs)} – ${formatClock(loop.bMs)}`
+      : 'None';
+  const heardFraction = listenedFraction(heard, durationMs);
+
   if (!item) {
     return (
+      <ScreenBackdrop>
       <View style={styles.screen}>
-        <Pressable accessibilityRole="button" onPress={onBack} style={styles.back}>
-          <Text style={styles.backText}>Library</Text>
-        </Pressable>
+        <ScreenHeader title="Lesson unavailable" onBack={() => navigation.goBack()} backLabel="Library" />
         <Text style={styles.message}>This lesson is no longer in the library.</Text>
+        <BottomNav
+          active="player"
+          playerItemId={itemId}
+          playerTitle={null}
+          onLibrary={() => navigation.navigate('Library')}
+          onPlayer={() => navigation.navigate('Player', { itemId })}
+        />
       </View>
+      </ScreenBackdrop>
     );
   }
 
   return (
+    <ScreenBackdrop>
     <View style={styles.screen}>
+      <ScreenHeader
+        title={displayTitle(item.title)}
+        subtitle={missing ? 'File missing' : `${speedSummary} · ${formatClock(positionMs)} / ${durationMs ? formatClock(durationMs) : '—'}`}
+        onBack={() => navigation.goBack()}
+        backLabel="Library"
+      />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable accessibilityRole="button" onPress={onBack} style={styles.back}>
-          <Text style={styles.backText}>Library</Text>
-        </Pressable>
-        <Text style={styles.title}>{item.title}</Text>
-        <View style={styles.skipZones}>
-          <GestureDetector gesture={backTap}>
-            <View style={styles.skipZone}>
-              <Text style={styles.skipHint}>Double-tap −{Math.round(skips.backMs / 1000)}s</Text>
+        <View style={styles.hero}>
+          <ArtworkAvatar title={item.title} size={88} />
+          <View style={styles.heroMeta}>
+            <Text style={styles.heroTitle}>{displayTitle(item.title, 52)}</Text>
+            <View style={styles.heroChips}>
+              <Text style={styles.heroChip}>{(item.format ?? 'audio').toUpperCase()}</Text>
+              <Text style={styles.heroChip}>{Math.round(heardFraction * 100)}% heard</Text>
+              <Text style={styles.heroChip}>{notes.length} notes</Text>
             </View>
-          </GestureDetector>
-          <GestureDetector gesture={forwardTap}>
-            <View style={styles.skipZone}>
-              <Text style={styles.skipHint}>Double-tap +{Math.round(skips.forwardMs / 1000)}s</Text>
-            </View>
-          </GestureDetector>
+          </View>
         </View>
-        <ScrubBar
-          durationMs={durationMs}
-          positionMs={scrubMs ?? progress.position * 1000}
-          heard={heard}
-          markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
-          onSeek={seekToMs}
-          onScrub={setScrubMs}
-        />
-        <View style={styles.times}>
-          <Text style={styles.time}>{formatClock(positionMs)}</Text>
-          <Text style={styles.time}>{durationMs ? formatClock(durationMs) : '—'}</Text>
+        <View style={styles.scrubBlock}>
+          <ScrubBar
+            durationMs={durationMs}
+            positionMs={scrubMs ?? progress.position * 1000}
+            heard={heard}
+            markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
+            onSeek={seekToMs}
+            onScrub={setScrubMs}
+          />
+          <View style={styles.times}>
+            <Text style={styles.time}>{formatClock(positionMs)}</Text>
+            <Text style={styles.time}>{durationMs ? formatClock(durationMs) : '—'}</Text>
+          </View>
+          <View style={styles.skipZones}>
+            <GestureDetector gesture={backTap}>
+              <View style={styles.skipZone} accessibilityLabel={`Double-tap to rewind ${Math.round(skips.backMs / 1000)} seconds`}>
+                <Ionicons name="play-back-outline" size={18} color={colors.muted} />
+                <Text style={styles.skipHint}>−{Math.round(skips.backMs / 1000)}s</Text>
+              </View>
+            </GestureDetector>
+            <GestureDetector gesture={forwardTap}>
+              <View style={styles.skipZone} accessibilityLabel={`Double-tap to skip forward ${Math.round(skips.forwardMs / 1000)} seconds`}>
+                <Ionicons name="play-forward-outline" size={18} color={colors.muted} />
+                <Text style={styles.skipHint}>+{Math.round(skips.forwardMs / 1000)}s</Text>
+              </View>
+            </GestureDetector>
+          </View>
         </View>
+
         {loop.aMs != null && loop.bMs != null ? (
-          <Text style={styles.loopLabel}>
-            Loop {formatClock(loop.aMs)} – {formatClock(loop.bMs)}
-          </Text>
+          <View style={styles.loopBanner}>
+            <Ionicons name="repeat" size={16} color={colors.accent} />
+            <Text style={styles.loopLabel}>
+              Loop {formatClock(loop.aMs)} – {formatClock(loop.bMs)}
+            </Text>
+          </View>
         ) : null}
-        {message ? <Text style={styles.message}>{message}</Text> : null}
+        {message ? (
+          <InlineBanner message={message} tone="error" onDismiss={() => setMessage(null)} />
+        ) : null}
         {missing ? (
           <Pressable accessibilityRole="button" onPress={() => void onLocate()} style={styles.primary}>
+            <Ionicons name="locate-outline" size={18} color={colors.background} />
             <Text style={styles.primaryText}>Locate file</Text>
           </Pressable>
         ) : null}
-        <View style={styles.transport}>
+
+        <View style={styles.transportCard}>
           <View style={styles.skipControl}>
             <Pressable accessibilityRole="button" onPress={() => changeSkip('backMs', -5000)} style={styles.step}>
               <Text style={styles.stepText}>−</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => skipBy(-skips.backMs)} style={styles.skipButton}>
-              <Text style={styles.skipText}>−{Math.round(skips.backMs / 1000)}s</Text>
+            <Pressable accessibilityRole="button" onPress={() => skipBy(-skips.backMs)} style={styles.roundSkip}>
+              <Ionicons name="play-back" size={22} color={colors.text} />
+              <Text style={styles.roundSkipText}>{Math.round(skips.backMs / 1000)}s</Text>
             </Pressable>
             <Pressable accessibilityRole="button" onPress={() => changeSkip('backMs', 5000)} style={styles.step}>
               <Text style={styles.stepText}>+</Text>
             </Pressable>
           </View>
-          <Pressable accessibilityRole="button" onPress={togglePlayback} style={styles.play}>
-            <Text style={styles.playText}>{playing ? 'Pause' : 'Play'}</Text>
-          </Pressable>
+          <AppPressable
+            accessibilityRole="button"
+            haptic
+            onPress={() => {
+              actionHaptic();
+              togglePlayback();
+            }}
+            style={styles.play}
+          >
+            <Ionicons name={playing ? 'pause' : 'play'} size={28} color={colors.background} />
+          </AppPressable>
           <View style={styles.skipControl}>
             <Pressable accessibilityRole="button" onPress={() => changeSkip('forwardMs', -5000)} style={styles.step}>
               <Text style={styles.stepText}>−</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => skipBy(skips.forwardMs)} style={styles.skipButton}>
-              <Text style={styles.skipText}>+{Math.round(skips.forwardMs / 1000)}s</Text>
+            <Pressable accessibilityRole="button" onPress={() => skipBy(skips.forwardMs)} style={styles.roundSkip}>
+              <Ionicons name="play-forward" size={22} color={colors.text} />
+              <Text style={styles.roundSkipText}>{Math.round(skips.forwardMs / 1000)}s</Text>
             </Pressable>
             <Pressable accessibilityRole="button" onPress={() => changeSkip('forwardMs', 5000)} style={styles.step}>
               <Text style={styles.stepText}>+</Text>
             </Pressable>
           </View>
         </View>
-        <Text style={styles.section}>Speed</Text>
-        <View style={styles.chips}>
-          {SPEEDS.map((value) => (
-            <Pressable
-              key={value}
-              accessibilityRole="button"
-              onPress={() => {
-                setSpeed(value);
-                setSpeedState(value);
-              }}
-              style={[styles.chip, speed === value && styles.chipOn]}
-            >
-              <Text style={[styles.chipText, speed === value && styles.chipTextOn]}>{value}×</Text>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={styles.section}>Sleep</Text>
-        <View style={styles.chips}>
-          {SLEEP_MINUTES.map((minutes) => (
-            <Pressable
-              key={minutes}
-              accessibilityRole="button"
-              onPress={() => {
-                if (sleepMinutes === minutes) {
-                  stopSleep();
-                  setSleepMinutes(null);
-                } else {
-                  startSleep(minutes);
-                  setSleepMinutes(minutes);
-                }
-              }}
-              style={[styles.chip, sleepMinutes === minutes && styles.chipOn]}
-            >
-              <Text style={[styles.chipText, sleepMinutes === minutes && styles.chipTextOn]}>{minutes}m</Text>
-            </Pressable>
-          ))}
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              stopSleep();
-              setSleepMinutes(null);
-            }}
-            style={styles.chip}
-          >
-            <Text style={styles.chipText}>Off</Text>
-          </Pressable>
-        </View>
-        <View style={styles.chips}>
-          <Pressable accessibilityRole="button" onPress={replayLastTenSeconds} style={styles.chip}>
-            <Text style={styles.chipText}>Replay 10s</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setLoop((current) => ({ ...current, aMs: Math.round(positionMs) }))}
-            style={styles.chip}
-          >
-            <Text style={styles.chipText}>Set A</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setLoop((current) => ({ ...current, bMs: Math.round(positionMs) }))}
-            style={styles.chip}
-          >
-            <Text style={styles.chipText}>Set B</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => setLoop({ aMs: null, bMs: null })} style={styles.chip}>
-            <Text style={styles.chipText}>Clear loop</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.section}>Notes</Text>
-        <View style={styles.composer}>
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            placeholder={`Note at ${formatClock(notePositionMs(positionMs))}`}
-            placeholderTextColor={colors.muted}
-            style={styles.noteInput}
-            multiline
-          />
-          <Pressable accessibilityRole="button" onPress={addNote} style={styles.addNote}>
-            <Text style={styles.addNoteText}>Add</Text>
-          </Pressable>
-        </View>
-        {notes.length === 0 ? (
-          <Text style={styles.noteEmpty}>Notes land a few seconds before the moment you tap Add.</Text>
-        ) : (
-          notes.map((note) => (
-            <View key={note.id} style={styles.noteRow}>
-              <Pressable accessibilityRole="button" onPress={() => seekToMs(note.positionMs)} style={styles.noteMain}>
-                <Text style={styles.noteTime}>{formatClock(note.positionMs)}</Text>
-                <Text style={styles.noteText}>{note.text}</Text>
-              </Pressable>
+
+        <CollapsibleSection title="Playback speed" summary={speedSummary}>
+          <View style={styles.chips}>
+            {SPEEDS.map((value) => (
               <Pressable
+                key={value}
                 accessibilityRole="button"
                 onPress={() => {
-                  if (pendingDeleteId === note.id) {
-                    deleteNote(note.id);
-                    setPendingDeleteId(null);
-                    setNotes(listNotes(itemId));
+                  setSpeed(value);
+                  setSpeedState(value);
+                }}
+                style={[styles.chip, speed === value && styles.chipOn]}
+              >
+                <Text style={[styles.chipText, speed === value && styles.chipTextOn]}>{value}×</Text>
+              </Pressable>
+            ))}
+          </View>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Sleep timer" summary={sleepSummary}>
+          <View style={styles.chips}>
+            {SLEEP_MINUTES.map((minutes) => (
+              <Pressable
+                key={minutes}
+                accessibilityRole="button"
+                onPress={() => {
+                  if (sleepMinutes === minutes) {
+                    stopSleep();
+                    setSleepMinutes(null);
                   } else {
-                    setPendingDeleteId(note.id);
+                    startSleep(minutes);
+                    setSleepMinutes(minutes);
                   }
                 }}
+                style={[styles.chip, sleepMinutes === minutes && styles.chipOn]}
               >
-                <Text style={styles.deleteNote}>{pendingDeleteId === note.id ? 'Confirm' : 'Delete'}</Text>
+                <Text style={[styles.chipText, sleepMinutes === minutes && styles.chipTextOn]}>{minutes}m</Text>
               </Pressable>
-            </View>
-          ))
-        )}
+            ))}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                stopSleep();
+                setSleepMinutes(null);
+              }}
+              style={styles.chip}
+            >
+              <Text style={styles.chipText}>Off</Text>
+            </Pressable>
+          </View>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Loop & replay" summary={loopSummary}>
+          <View style={styles.chips}>
+            <Pressable accessibilityRole="button" onPress={replayLastTenSeconds} style={styles.chip}>
+              <Text style={styles.chipText}>Replay 10s</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setLoop((current) => ({ ...current, aMs: Math.round(positionMs) }))}
+              style={styles.chip}
+            >
+              <Text style={styles.chipText}>Set A</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setLoop((current) => ({ ...current, bMs: Math.round(positionMs) }))}
+              style={styles.chip}
+            >
+              <Text style={styles.chipText}>Set B</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => setLoop({ aMs: null, bMs: null })} style={styles.chip}>
+              <Text style={styles.chipText}>Clear</Text>
+            </Pressable>
+          </View>
+        </CollapsibleSection>
+
+        <View style={styles.notesCard}>
+          <Text style={styles.notesTitle}>Notes</Text>
+          <View style={styles.composer}>
+            <TextInput
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={`Note at ${formatClock(notePositionMs(positionMs))}`}
+              placeholderTextColor={colors.muted}
+              style={styles.noteInput}
+              multiline
+            />
+            <AppPressable
+              accessibilityRole="button"
+              haptic
+              onPress={() => {
+                actionHaptic();
+                addNote();
+              }}
+              style={styles.addNote}
+            >
+              <Text style={styles.addNoteText}>Add</Text>
+            </AppPressable>
+          </View>
+          {notes.length === 0 ? (
+            <Text style={styles.noteEmpty}>Notes land a few seconds before the moment you tap Add.</Text>
+          ) : (
+            notes.map((note) => (
+              <View key={note.id} style={styles.noteRow}>
+                <Pressable accessibilityRole="button" onPress={() => seekToMs(note.positionMs)} style={styles.noteMain}>
+                  <Text style={styles.noteTime}>{formatClock(note.positionMs)}</Text>
+                  <Text style={styles.noteText}>{note.text}</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    if (pendingDeleteId === note.id) {
+                      deleteNote(note.id);
+                      setPendingDeleteId(null);
+                      setNotes(listNotes(itemId));
+                    } else {
+                      setPendingDeleteId(note.id);
+                    }
+                  }}
+                >
+                  <Text style={styles.deleteNote}>{pendingDeleteId === note.id ? 'Confirm' : 'Delete'}</Text>
+                </Pressable>
+              </View>
+            ))
+          )}
+        </View>
       </ScrollView>
+      <BottomNav
+        active="player"
+        playerItemId={itemId}
+        playerTitle={item.title}
+        onLibrary={() => navigation.navigate('Library')}
+        onPlayer={() => navigation.navigate('Player', { itemId })}
+      />
     </View>
+    </ScreenBackdrop>
   );
 }
 
@@ -382,41 +478,65 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingTop: 56,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    gap: 10,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    gap: spacing.md,
   },
-  back: {
-    minHeight: 44,
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
+  hero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+    paddingVertical: spacing.sm,
   },
-  backText: {
-    color: colors.accent,
-    fontSize: 16,
-    fontWeight: '600',
+  heroMeta: {
+    flex: 1,
+    gap: spacing.sm,
   },
-  title: {
+  heroTitle: {
     color: colors.text,
-    fontSize: 26,
+    fontSize: 20,
     fontWeight: '700',
+    lineHeight: 26,
+  },
+  heroChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  heroChip: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    overflow: 'hidden',
+  },
+  scrubBlock: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
   },
   skipZones: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
   },
   skipZone: {
     flex: 1,
-    minHeight: 64,
-    borderRadius: 12,
-    backgroundColor: colors.card,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    minHeight: 40,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surface,
   },
   skipHint: {
     color: colors.muted,
     fontSize: 13,
+    fontWeight: '600',
   },
   times: {
     flexDirection: 'row',
@@ -425,91 +545,100 @@ const styles = StyleSheet.create({
   time: {
     color: colors.text,
     fontVariant: ['tabular-nums'],
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  loopBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   loopLabel: {
     color: colors.accent,
     fontSize: 14,
+    fontWeight: '600',
   },
   message: {
     color: colors.danger,
     fontSize: 15,
     lineHeight: 22,
+    paddingHorizontal: spacing.lg,
   },
   primary: {
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    minHeight: 48,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.accent,
+    borderRadius: radii.md,
+    minHeight: 48,
   },
   primaryText: {
     color: colors.background,
     fontWeight: '700',
     fontSize: 16,
   },
-  transport: {
+  transportCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
-    marginTop: 4,
+    gap: spacing.sm,
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
   },
   skipControl: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
+    flex: 1,
   },
   step: {
-    minWidth: 32,
+    minWidth: 28,
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepText: {
     color: colors.muted,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
   },
-  skipButton: {
-    minHeight: 44,
+  roundSkip: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    minHeight: 52,
+    gap: 2,
   },
-  skipText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
+  roundSkipText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
   },
   play: {
-    minWidth: 92,
-    minHeight: 52,
-    borderRadius: 26,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  playText: {
-    color: colors.background,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  section: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '600',
-    marginTop: 6,
-  },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.sm,
   },
   chip: {
     minHeight: 36,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    backgroundColor: colors.card,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -524,9 +653,21 @@ const styles = StyleSheet.create({
   chipTextOn: {
     color: colors.background,
   },
+  notesCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  notesTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '600',
+  },
   composer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
     alignItems: 'flex-end',
   },
   noteInput: {
@@ -534,16 +675,16 @@ const styles = StyleSheet.create({
     minHeight: 48,
     maxHeight: 120,
     color: colors.text,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     fontSize: 16,
   },
   addNote: {
     minHeight: 48,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
     backgroundColor: colors.cardRaised,
     alignItems: 'center',
     justifyContent: 'center',
@@ -560,9 +701,9 @@ const styles = StyleSheet.create({
   },
   noteRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.md,
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.line,
   },
