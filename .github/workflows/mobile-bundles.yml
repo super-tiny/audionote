@@ -48,10 +48,17 @@ jobs:
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager --install \
-            "platforms;android-37" \
             "build-tools;37.0.0" \
             "ndk;27.1.12297006" \
             "cmake;3.30.5"
+          # Newer Android CLI publishes API 37 as platforms;android-37.0.
+          # Older sdkmanager still uses platforms;android-37.
+          if ! sdkmanager --install "platforms;android-37"; then
+            sdkmanager --install "platforms;android-37.0"
+          fi
+          if [[ -d "${ANDROID_HOME}/platforms/android-37.0" && ! -e "${ANDROID_HOME}/platforms/android-37" ]]; then
+            ln -s android-37.0 "${ANDROID_HOME}/platforms/android-37"
+          fi
 
       - name: Install dependencies
         run: npm ci
