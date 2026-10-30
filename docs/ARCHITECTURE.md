@@ -9,10 +9,11 @@ Expo SDK 58 (React Native 0.88, New Architecture) with continuous native generat
 | Concern | Module |
 | --- | --- |
 | Entry | `index.ts` registers the playback session, then the root component |
-| Playback | `@rntp/player` (React Native Track Player v5). `src/playback/session.ts` calls `setupPlayer` and publishes lock-screen commands (play/pause, seek, −15s / +30s) |
-| Library database | `expo-sqlite` via `src/db/open.ts`. Schema is versioned by a `schema_version` row |
+| Screens | `src/App.tsx` switches between the library and the player. No navigation library |
+| Playback | `@rntp/player` (React Native Track Player v5). `src/playback/session.ts` sets up speech playback, lock-screen commands, and a one-second progress ticker |
+| Library database | `expo-sqlite` via `src/db/open.ts`. Schema version 2 |
 | Lists and gestures | `@shopify/flash-list`, `react-native-gesture-handler`, `react-native-reanimated` + `react-native-worklets` |
-| Files | `expo-document-picker` and `expo-file-system` are linked so later import work does not change the native graph |
+| Files | Local module `modules/audionote-file-access`. `expo-file-system` reads only the head and tail of a file |
 
 `@rntp/player` does not run inside Expo Go. Bundles are dev builds (`expo-dev-client`) or release binaries from the pipelines below. Playback is speech-oriented, keeps playing if the task is removed from recents, and pauses when headphones disconnect.
 
@@ -83,7 +84,7 @@ The script writes the decoded keystore under `.keystore/`, which is gitignored. 
 
 | Workflow | When | Runner | Output |
 | --- | --- | --- | --- |
-| `.github/workflows/ci.yml` | Pull requests and pushes to `main` | `ubuntu-24.04` | `tsc`, `expo install --check`, `expo export` for Android and iOS |
+| `.github/workflows/ci.yml` | Pull requests and pushes to `main` | `ubuntu-24.04` | Unit tests, `tsc`, `expo install --check`, `expo export` for Android and iOS |
 | `.github/workflows/mobile-bundles.yml` | Pull requests, `main`, tags `v*`, manual | `ubuntu-24.04` and `macos-26` | `audionote-android-apk`, `audionote-android-aab`, `audionote-ios-ipa` |
 | `.github/workflows/eas-build.yml` | Manual | `ubuntu-24.04` | EAS build queued for an `eas.json` profile. Requires `EXPO_TOKEN` |
 
@@ -101,10 +102,30 @@ The script writes the decoded keystore under `.keystore/`, which is gitignored. 
 
 ## Native modules in the binary
 
-Autolinking includes every native dependency in `package.json`, whether or not the current screen imports it. The release binary therefore already links the player, SQLite, the document picker, the file system, gesture handler, Reanimated, and FlashList. Adding a later milestone should not require a new native dependency for those pieces.
+Autolinking includes every native dependency in `package.json`, plus packages under `modules/`. `audionote-file-access` lives in both places: Metro resolves the `file:` dependency, and autolinking sees one module because the `node_modules` entry and `modules/audionote-file-access` are the same directory. The release binary links the player, SQLite, the file system, gesture handler, Reanimated, FlashList, and this file-access module.
 
 JavaScript export (`npm run export`) embeds the Hermes bundle Metro produces for both platforms. It does not compile Kotlin or Swift. The mobile-bundles workflow is what proves the native project links and archives. `babel.config.js` loads `babel-preset-expo` and the Reanimated plugin, so `babel-preset-expo` is a direct dependency. Metro does not see the copy nested under `expo`.
 
-## Not in this slice
+## Library and playback
 
-Library import, resume ranges, timed notes, swipe seek, and backup/export are later milestones. The database opener only ensures `schema_version`. The player session does not yet load a local file. Those features sit on top of this bundle pipeline.
+Lessons stay in their original location. Import uses `ACTION_OPEN_DOCUMENT` on Android and `UIDocumentPicker` with `asCopy: false` on iOS. Android keeps a persistable read grant on the `content://` URI. iOS stores a base64 security-scoped bookmark and resolves it to a file URL before playback. Re-importing the same header fingerprint refreshes that grant on the existing row, so notes remain. Locate file does the same for a chosen row when the URI no longer opens.
+
+Duration is read from the first or last 512KB: an M4A `mvhd` atom, an MP3 Xing frame count, or a CBR estimate from the MPEG frame length. The player later replaces that hint with its own duration and does not overwrite the format column. M4A/AAC is the format to prefer for a multi-hour lesson. VBR MP3 without a Xing header can seek and measure poorly.
+
+Tables, migrated by the `schema_version` row (currently 2):
+
+| Table | Role |
+| --- | --- |
+| `audio_item` | URI, bookmark, fingerprint, title, duration, format, missing flag |
+| `playback_state` | Resume position and speed |
+| `listen_range` | Heard intervals. A seek gap above 4 seconds starts a new range, so progress percent is not the resume cursor |
+| `note` | Text at a timeline position |
+| `setting` | Skip-back and skip-forward intervals |
+
+These are versioned SQL statements. A query layer such as Drizzle can wrap the same tables later.
+
+The progress ticker samples about once a second. It writes the resume position every five samples and whenever playback pauses, including when the app leaves the foreground. The player UI polls progress at 4 Hz. Continue listening is the most recently updated item whose position is past one second and short of the end. Search is a debounced `LIKE` on the title.
+
+Timed notes are stored three seconds before the displayed position, including a scrub preview. Markers sit on the scrub bar. The bar's horizontal pan gets finer as the finger moves vertically (`1 / (1 + |y| / 100)`). Double-tap zones sit above the bar so that gesture does not delay the pan. Skip defaults are −15s and +30s, adjustable in 5 second steps and published to the lock screen. Speed runs from 0.5× to 3×. Sleep uses the player's wall-clock timer. Replay jumps back 10 seconds. A-B loop seeks back to A when playback reaches B.
+
+Backup and export of the library JSON and notes Markdown is a later milestone. So is a full play-through of a 9 hour file on a device.
