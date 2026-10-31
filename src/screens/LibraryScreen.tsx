@@ -22,6 +22,7 @@ import { ArtworkAvatar } from '../ui/ArtworkAvatar';
 import { displayTitle } from '../ui/displayTitle';
 import { InlineBanner } from '../ui/InlineBanner';
 import { PlaybackDock } from '../ui/PlaybackDock';
+import { AboutSheet } from '../ui/AboutSheet';
 import { NavigationMenu } from '../ui/NavigationMenu';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ScreenHeader } from '../ui/ScreenHeader';
@@ -82,6 +83,7 @@ export function LibraryScreen({
   const [status, setStatus] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     const handle = setTimeout(() => setApplied(query), 200);
@@ -187,8 +189,15 @@ export function LibraryScreen({
             disabled: true,
             onPress: () => undefined,
           },
+          {
+            icon: 'information-circle-outline',
+            label: 'About AudioNote',
+            detail: 'GitHub, contribute, issues, features',
+            onPress: () => setAboutOpen(true),
+          },
         ]}
       />
+      <AboutSheet visible={aboutOpen} onClose={() => setAboutOpen(false)} />
       <View style={styles.toolbar}>
         <View style={styles.searchWrap}>
           <Ionicons name="search" size={18} color={colors.muted} style={styles.searchIcon} />
