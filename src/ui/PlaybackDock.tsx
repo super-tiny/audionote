@@ -77,15 +77,15 @@ export function PlaybackDock(props: PlaybackDockProps) {
             </Text>
           </View>
         </Pressable>
-        <View style={styles.controls}>
+        <View style={styles.miniControls}>
           <AppPressable accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`} haptic onPress={onSkipBack} style={styles.controlBtn}>
-            <Ionicons name="play-skip-back" size={24} color={colors.text} />
+            <Ionicons name="play-back" size={26} color={colors.text} />
           </AppPressable>
           <AppPressable accessibilityLabel={playing ? 'Pause' : 'Play'} haptic onPress={onPlayPause} style={styles.playBtn}>
             <Ionicons name={playing ? 'pause' : 'play'} size={26} color={colors.background} />
           </AppPressable>
           <AppPressable accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`} haptic onPress={onSkipForward} style={styles.controlBtn}>
-            <Ionicons name="play-skip-forward" size={24} color={colors.text} />
+            <Ionicons name="play-forward" size={26} color={colors.text} />
           </AppPressable>
         </View>
       </View>
@@ -106,18 +106,22 @@ export function PlaybackDock(props: PlaybackDockProps) {
         <Text style={styles.time}>{formatClock(props.scrubMs ?? props.positionMs)}</Text>
         <Text style={styles.time}>{props.durationMs ? formatClock(props.durationMs) : '—'}</Text>
       </View>
-      <View style={styles.controls}>
-        <AppPressable accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`} haptic onPress={onSkipBack} style={styles.controlBtn}>
-          <Ionicons name="play-skip-back" size={28} color={colors.text} />
-        </AppPressable>
+      <View style={styles.fullControls}>
+        <View style={styles.fullControlsSides}>
+          <AppPressable accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`} haptic onPress={onSkipBack} style={styles.controlBtn}>
+            <Ionicons name="play-back" size={30} color={colors.text} />
+          </AppPressable>
+          <View style={styles.fullControlsRight}>
+            <AppPressable accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`} haptic onPress={onSkipForward} style={styles.controlBtn}>
+              <Ionicons name="play-forward" size={30} color={colors.text} />
+            </AppPressable>
+            <AppPressable accessibilityLabel="Playback settings" haptic onPress={props.onOpenSettings} style={styles.settingsBtn}>
+              <Ionicons name="settings-outline" size={24} color={colors.text} />
+            </AppPressable>
+          </View>
+        </View>
         <AppPressable accessibilityLabel={playing ? 'Pause' : 'Play'} haptic onPress={onPlayPause} style={styles.playBtnLarge}>
           <Ionicons name={playing ? 'pause' : 'play'} size={32} color={colors.background} />
-        </AppPressable>
-        <AppPressable accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`} haptic onPress={onSkipForward} style={styles.controlBtn}>
-          <Ionicons name="play-skip-forward" size={28} color={colors.text} />
-        </AppPressable>
-        <AppPressable accessibilityLabel="Playback settings" haptic onPress={props.onOpenSettings} style={styles.settingsBtn}>
-          <Ionicons name="settings-outline" size={24} color={colors.text} />
         </AppPressable>
       </View>
     </View>
@@ -144,12 +148,27 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     fontWeight: '600',
   },
-  controls: {
+  fullControls: {
+    position: 'relative',
+    minHeight: 72,
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+  },
+  fullControlsSides: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    justifyContent: 'space-between',
+    zIndex: 1,
+  },
+  fullControlsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  miniControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   controlBtn: {
     minWidth: 48,
@@ -158,19 +177,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   playBtnLarge: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
     width: 64,
     height: 64,
+    marginTop: -32,
+    marginLeft: -32,
     borderRadius: 32,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
   },
   settingsBtn: {
     minWidth: 44,
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing.xs,
   },
   miniWrap: {
     flexDirection: 'row',
