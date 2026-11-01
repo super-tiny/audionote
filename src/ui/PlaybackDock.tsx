@@ -8,7 +8,7 @@ import { formatClock } from '../notes/capture';
 import { readSkips, skipBy, togglePlayback } from '../playback/engine';
 import { AppPressable } from './AppPressable';
 import { ArtworkAvatar } from './ArtworkAvatar';
-import { ScrubBar } from './ScrubBar';
+import { ScrubBar, type ScrubSeekSource } from './ScrubBar';
 import { displayTitle } from './displayTitle';
 import { actionHaptic } from './haptics';
 import { colors, elevation, radii, spacing } from './theme';
@@ -27,7 +27,11 @@ type PlaybackDockFullProps = PlaybackDockBase & {
   markers: readonly Marker[];
   scrubMs: number | null;
   onScrub: (positionMs: number | null) => void;
-  onSeek: (positionMs: number) => void;
+  onSeek: (positionMs: number, fromMs: number, source: ScrubSeekSource) => void;
+  onScrubPreview?: (fromMs: number, toMs: number) => void;
+  onScrubCancel?: () => void;
+  jumpsCount?: number;
+  onOpenJumps?: () => void;
   onOpenSettings: () => void;
 };
 
@@ -101,9 +105,25 @@ export function PlaybackDock(props: PlaybackDockProps) {
         markers={props.markers}
         onSeek={props.onSeek}
         onScrub={props.onScrub}
+        onScrubPreview={props.onScrubPreview}
+        onScrubCancel={props.onScrubCancel}
       />
       <View style={styles.times}>
         <Text style={styles.time}>{formatClock(props.scrubMs ?? props.positionMs)}</Text>
+        {props.onOpenJumps ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={props.jumpsCount ? `Jumps, ${props.jumpsCount}` : 'Jumps'}
+            accessibilityHint="Opens positions you can return to"
+            onPress={props.onOpenJumps}
+            style={styles.jumpsButton}
+          >
+            <Ionicons name="time-outline" size={15} color={props.jumpsCount ? colors.accent : colors.muted} />
+            <Text style={[styles.jumpsLabel, props.jumpsCount ? styles.jumpsLabelOn : null]}>
+              Jumps{props.jumpsCount ? ` ${props.jumpsCount}` : ''}
+            </Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.time}>{props.durationMs ? formatClock(props.durationMs) : '—'}</Text>
       </View>
       <View style={styles.fullControls}>
@@ -139,8 +159,25 @@ const styles = StyleSheet.create({
   },
   times: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: -4,
+  },
+  jumpsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    minHeight: 32,
+    paddingHorizontal: spacing.sm,
+  },
+  jumpsLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  jumpsLabelOn: {
+    color: colors.accent,
   },
   time: {
     color: colors.muted,

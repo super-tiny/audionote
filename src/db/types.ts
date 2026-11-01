@@ -29,6 +29,14 @@ export type StoredRange = {
   sessionAt: number;
 };
 
+export type Jump = {
+  id: string;
+  itemId: string;
+  fromMs: number;
+  toMs: number;
+  createdAt: number;
+};
+
 type AudioRow = {
   id: string;
   uri: string;

@@ -48,6 +48,16 @@ CREATE TABLE IF NOT EXISTS note (
 
 CREATE INDEX IF NOT EXISTS note_item_position ON note(item_id, position_ms);
 
+CREATE TABLE IF NOT EXISTS jump (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES audio_item(id) ON DELETE CASCADE,
+  from_ms INTEGER NOT NULL,
+  to_ms INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS jump_item_created ON jump(item_id, created_at);
+
 CREATE TABLE IF NOT EXISTS setting (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -66,9 +76,9 @@ export function getDatabase(): SQLite.SQLiteDatabase {
     database.execSync(SCHEMA);
     const current = database.getFirstSync<{ version: number }>('SELECT version FROM schema_version LIMIT 1');
     if (!current) {
-      database.runSync('INSERT INTO schema_version (version) VALUES (2)');
-    } else if (current.version < 2) {
-      database.runSync('UPDATE schema_version SET version = 2');
+      database.runSync('INSERT INTO schema_version (version) VALUES (3)');
+    } else if (current.version < 3) {
+      database.runSync('UPDATE schema_version SET version = 3');
     }
   }
   return database;

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useIsPlaying, useProgress } from '@rntp/player';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { clearJumps, deleteJump, listJumps } from '../db/jumps';
 import {
   deleteNote,
   getItem,
@@ -12,7 +13,7 @@ import {
   markMissing,
   rangesForItem,
 } from '../db/library';
-import type { AudioItem, Note } from '../db/types';
+import type { AudioItem, Jump, Note } from '../db/types';
 import { listenedFraction, type ListenRange } from '../library/ranges';
 import { locateAudioFile } from '../library/import';
 import { createId } from '../media/identity';
@@ -27,10 +28,19 @@ import {
   stopSleep,
   writeSkips,
 } from '../playback/engine';
+import {
+  cancelPendingJump,
+  flushJumpHistory,
+  recordJumpSeek,
+  revertJumpDrag,
+  subscribeJumpHistory,
+} from '../playback/jumpHistory';
+import type { RecordedJumpSource } from '../playback/jumpRecord';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
 import { displayTitle } from '../ui/displayTitle';
 import { InlineBanner } from '../ui/InlineBanner';
+import { JumpHistorySheet } from '../ui/JumpHistorySheet';
 import { PlaybackDock } from '../ui/PlaybackDock';
 import { PlaybackSettingsSheet, type LoopPoints } from '../ui/PlaybackSettingsSheet';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
@@ -50,6 +60,8 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const progress = useProgress(0.25);
   const [item, setItem] = useState<AudioItem | null>(() => getItem(itemId));
   const [notes, setNotes] = useState<Note[]>(() => listNotes(itemId));
+  const [jumps, setJumps] = useState<Jump[]>(() => listJumps(itemId));
+  const [jumpsOpen, setJumpsOpen] = useState(false);
   const [heard, setHeard] = useState<ListenRange[]>(() => rangesForItem(itemId));
   const [skips, setSkips] = useState(() => readSkips());
   const [speed, setSpeedState] = useState(item?.speed ?? 1);
@@ -73,31 +85,48 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     setItem(current);
     setNotes(listNotes(itemId));
     setHeard(rangesForItem(itemId));
-    if (!current) {
-      return;
+    if (current) {
+      setSpeedState(current.speed || 1);
+      void openItem(current)
+        .then((opened) => {
+          if (cancelled) {
+            return;
+          }
+          markMissing(itemId, !opened);
+          setMissing(!opened);
+          setItem(getItem(itemId));
+          if (!opened) {
+            setMessage('The file is missing. Locate it and the notes stay on this lesson.');
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setMessage(error instanceof Error ? error.message : 'Could not start playback.');
+          }
+        });
     }
-    setSpeedState(current.speed || 1);
-    void openItem(current)
-      .then((opened) => {
-        if (cancelled) {
-          return;
-        }
-        markMissing(itemId, !opened);
-        setMissing(!opened);
-        setItem(getItem(itemId));
-        if (!opened) {
-          setMessage('The file is missing. Locate it and the notes stay on this lesson.');
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setMessage(error instanceof Error ? error.message : 'Could not start playback.');
-        }
-      });
     return () => {
       cancelled = true;
+      flushJumpHistory();
     };
   }, [itemId]);
+
+  useEffect(() => {
+    setJumps(listJumps(itemId));
+    setJumpsOpen(false);
+    return subscribeJumpHistory((jump) => {
+      if (jump.itemId === itemId) {
+        setJumps(listJumps(itemId));
+      }
+    });
+  }, [itemId]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('blur', () => {
+      flushJumpHistory();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   useEffect(() => {
     const handle = setInterval(() => {
@@ -122,6 +151,32 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
       loopGuard.current = false;
     }
   }, [positionMs, playing, loop, scrubMs]);
+
+  function rememberJump(fromMs: number, toMs: number, source: RecordedJumpSource, commit: 'defer' | 'now' | 'hold'): void {
+    recordJumpSeek({
+      itemId,
+      fromMs,
+      toMs,
+      source,
+      commit: commit === 'hold' ? 'hold' : playing ? 'defer' : 'now',
+    });
+  }
+
+  function restoreJump(jump: Jump): void {
+    cancelPendingJump();
+    setScrubMs(null);
+    seekToMs(jump.fromMs);
+  }
+
+  function removeJump(jump: Jump): void {
+    deleteJump(jump.id);
+    setJumps((current) => current.filter((entry) => entry.id !== jump.id));
+  }
+
+  function clearJumpList(): void {
+    clearJumps(itemId);
+    setJumps([]);
+  }
 
   function addNote(): void {
     const text = draft.trim();
@@ -241,7 +296,15 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             ) : (
               notes.map((note) => (
                 <View key={note.id} style={styles.noteRow}>
-                  <Pressable accessibilityRole="button" onPress={() => seekToMs(note.positionMs)} style={styles.noteMain}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      const fromMs = progress.position * 1000;
+                      seekToMs(note.positionMs);
+                      rememberJump(fromMs, note.positionMs, 'note', 'defer');
+                    }}
+                    style={styles.noteMain}
+                  >
                     <Text style={styles.noteTime}>{formatClock(note.positionMs)}</Text>
                     <Text style={styles.noteText}>{note.text}</Text>
                   </Pressable>
@@ -274,10 +337,19 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
           scrubMs={scrubMs}
           onScrub={setScrubMs}
-          onSeek={seekToMs}
+          onSeek={(toMs, fromMs, source) => {
+            seekToMs(toMs);
+            rememberJump(fromMs, toMs, source, 'defer');
+          }}
+          onScrubPreview={(fromMs, toMs) => rememberJump(fromMs, toMs, 'scrub', 'hold')}
+          onScrubCancel={revertJumpDrag}
+          jumpsCount={jumps.length}
+          onOpenJumps={() => {
+            setJumps(listJumps(itemId));
+            setJumpsOpen(true);
+          }}
           onOpenSettings={() => setSettingsOpen(true)}
         />
-
         <PlaybackSettingsSheet
           visible={settingsOpen}
           onClose={() => setSettingsOpen(false)}
@@ -304,6 +376,14 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             writeSkips(next);
             setSkips(readSkips());
           }}
+        />
+        <JumpHistorySheet
+          visible={jumpsOpen}
+          jumps={jumps}
+          onClose={() => setJumpsOpen(false)}
+          onReturn={restoreJump}
+          onDelete={removeJump}
+          onClear={clearJumpList}
         />
       </View>
     </ScreenBackdrop>
