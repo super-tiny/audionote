@@ -36,6 +36,11 @@ export function cancelPendingJump(): void {
   scheduler.cancelPending();
 }
 
+/** A scrub was cancelled. Put back the jump that was pending before the finger went down. */
+export function revertJumpDrag(): void {
+  scheduler.revertDrag();
+}
+
 export function subscribeJumpHistory(listener: JumpListener): () => void {
   listeners.add(listener);
   return () => {

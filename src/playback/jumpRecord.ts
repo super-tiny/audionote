@@ -128,6 +128,8 @@ export function createJumpScheduler(deps: {
 }) {
   let recorder = createJumpRecorder();
   let cancelTimer: (() => void) | null = null;
+  /** Pending jump from before the current finger-down drag. `undefined` means no drag is in progress. */
+  let dragBaseline: PendingJump | null | undefined;
   const now = deps.now ?? (() => Date.now());
   const settleMs = deps.settleMs ?? JUMP_SETTLE_MS;
   const setTimer =
@@ -163,11 +165,20 @@ export function createJumpScheduler(deps: {
     recordSeek(input: SeekInput): void {
       if (input.source === 'history') {
         clearArmedTimer();
+        dragBaseline = undefined;
         recorder = { pending: null, armedUntil: null };
         return;
       }
       if (!sourceIsRecorded(input.source)) {
         return;
+      }
+
+      if (input.commit === 'hold') {
+        if (dragBaseline === undefined) {
+          dragBaseline = recorder.pending;
+        }
+      } else {
+        dragBaseline = undefined;
       }
 
       const step = observeSeek(recorder, {
@@ -199,12 +210,30 @@ export function createJumpScheduler(deps: {
     },
     flush(): void {
       clearArmedTimer();
+      dragBaseline = undefined;
       const step = flushRecorder(recorder);
       recorder = step.recorder;
       persist(step.save);
     },
+    /**
+     * The finger lifted without a completed drag. Restore the chain from before
+     * the touch so a cancelled scrub does not erase an earlier jump.
+     */
+    revertDrag(): void {
+      if (dragBaseline === undefined) {
+        return;
+      }
+      clearArmedTimer();
+      const restore = dragBaseline;
+      dragBaseline = undefined;
+      recorder = { pending: restore, armedUntil: null };
+      if (restore) {
+        arm(now() + settleMs);
+      }
+    },
     cancelPending(): void {
       clearArmedTimer();
+      dragBaseline = undefined;
       recorder = { pending: null, armedUntil: null };
     },
     getPending(): PendingJump | null {

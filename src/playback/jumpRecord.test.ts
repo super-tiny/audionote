@@ -147,6 +147,28 @@ test('skip buttons do not add a row or rewrite a pending jump', () => {
   assert.deepEqual(h.saves, [{ itemId: LESSON, fromMs: FROM, toMs: TO }]);
 });
 
+test('a cancelled drag does not replace a jump that was already pending', () => {
+  const h = harness();
+  h.seek({ itemId: LESSON, fromMs: FROM, toMs: TO, source: 'timeline' });
+  h.seek({ itemId: LESSON, fromMs: TO, toMs: TO + 30_000, source: 'scrub', commit: 'hold' });
+  assert.equal(h.saves.length, 0);
+  assert.equal(h.activeTimers, 0);
+  h.scheduler.revertDrag();
+  assert.equal(h.scheduler.getPending()?.toMs, TO);
+  assert.equal(h.activeTimers, 1);
+  h.scheduler.flush();
+  assert.deepEqual(h.saves, [{ itemId: LESSON, fromMs: FROM, toMs: TO }]);
+});
+
+test('a cancelled drag with nothing pending writes nothing', () => {
+  const h = harness();
+  h.seek({ itemId: LESSON, fromMs: FROM, toMs: TO, source: 'scrub', commit: 'hold' });
+  h.scheduler.revertDrag();
+  h.scheduler.flush();
+  assert.equal(h.saves.length, 0);
+  assert.equal(h.activeTimers, 0);
+});
+
 test('returning from history cancels the pending jump and adds nothing', () => {
   const h = harness();
   h.seek({ itemId: LESSON, fromMs: FROM, toMs: TO, source: 'timeline' });
