@@ -9,7 +9,7 @@ Expo SDK 58 (React Native 0.88, New Architecture) with continuous native generat
 | Concern | Module |
 | --- | --- |
 | Entry | `index.ts` registers the playback session, then the root component |
-| Screens | `@react-navigation/native-stack` in `src/navigation/RootNavigator.tsx`. Library and player screens share a bottom tab bar for navigation |
+| Screens | `@react-navigation/native-stack` in `src/navigation/RootNavigator.tsx`. Library shows a fixed mini player when audio is active; the full player pins transport and scrubbing to the bottom dock |
 | Playback | `@rntp/player` (React Native Track Player v5). `src/playback/session.ts` sets up speech playback, lock-screen commands, and a one-second progress ticker |
 | Library database | `expo-sqlite` via `src/db/open.ts`. Schema version 2 |
 | Lists and gestures | `@shopify/flash-list`, `react-native-gesture-handler`, `react-native-reanimated` + `react-native-worklets` |
@@ -129,6 +129,6 @@ The progress ticker samples about once a second. It writes the resume position e
 
 Timed notes are stored three seconds before the displayed position, including a scrub preview. Markers sit on the scrub bar. The bar's horizontal pan gets finer as the finger moves vertically (`1 / (1 + |y| / 100)`). Double-tap zones sit above the bar so that gesture does not delay the pan. Skip defaults are −15s and +30s, adjustable in 5 second steps and published to the lock screen. Speed runs from 0.5× to 3×. Sleep uses the player's wall-clock timer. Replay jumps back 10 seconds. A-B loop seeks back to A when playback reaches B.
 
-Jump history records a scrub, a tap on the timeline, or a jump to a note. It ignores playback, the skip buttons, double-tap skips, and the 10 second replay. A drag updates an in-memory jump and writes nothing until the finger lifts. Further seeks within about 1.8 seconds keep the first origin and the last landing spot, then one row is saved. The row is dropped when that distance is under 10 seconds. Pause, leaving the player, switching lessons, and the app leaving the foreground flush the pending jump immediately. Tapping a row seeks back to its origin and does not add a row. Times at an hour or longer use `h:mm:ss`.
+Jump history records a scrub, a tap on the timeline, or a jump to a note. The list opens from the timeline on the playback dock. It ignores playback, the skip buttons, and the 10 second replay. A drag updates an in-memory jump and writes nothing until the finger lifts. Further seeks within about 1.8 seconds keep the first origin and the last landing spot, then one row is saved. The row is dropped when that distance is under 10 seconds. Pause, leaving the player, switching lessons, and the app leaving the foreground flush the pending jump immediately. Tapping a row seeks back to its origin and does not add a row. Times at an hour or longer use `h:mm:ss`.
 
 Backup and export of the library JSON and notes Markdown is a later milestone. Jump rows live in the same database and belong in that export. So does a full play-through of a 9 hour file on a device.
