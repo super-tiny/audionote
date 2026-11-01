@@ -112,7 +112,7 @@ Lessons stay in their original location. Import uses `ACTION_OPEN_DOCUMENT` on A
 
 Duration is read from the first or last 512KB: an M4A `mvhd` atom, an MP3 Xing frame count, or a CBR estimate from the MPEG frame length. The player later replaces that hint with its own duration and does not overwrite the format column. M4A/AAC is the format to prefer for a multi-hour lesson. VBR MP3 without a Xing header can seek and measure poorly.
 
-Tables, migrated by the `schema_version` row (currently 2):
+Tables, migrated by the `schema_version` row (currently 3):
 
 | Table | Role |
 | --- | --- |
@@ -120,12 +120,15 @@ Tables, migrated by the `schema_version` row (currently 2):
 | `playback_state` | Resume position and speed |
 | `listen_range` | Heard intervals. A seek gap above 4 seconds starts a new range, so progress percent is not the resume cursor |
 | `note` | Text at a timeline position |
+| `jump` | Per-lesson seek history: position before the jump, position landed on, newest first. The latest 50 rows are kept |
 | `setting` | Skip-back and skip-forward intervals |
 
-These are versioned SQL statements. A query layer such as Drizzle can wrap the same tables later.
+These are versioned SQL statements. A query layer such as Drizzle can wrap the same tables later. The `jump` table is created with the rest of the schema (`CREATE TABLE IF NOT EXISTS`), including databases that were already on version 2.
 
 The progress ticker samples about once a second. It writes the resume position every five samples and whenever playback pauses, including when the app leaves the foreground. The player UI polls progress at 4 Hz. Continue listening is the most recently updated item whose position is past one second and short of the end. Search is a debounced `LIKE` on the title.
 
 Timed notes are stored three seconds before the displayed position, including a scrub preview. Markers sit on the scrub bar. The bar's horizontal pan gets finer as the finger moves vertically (`1 / (1 + |y| / 100)`). Double-tap zones sit above the bar so that gesture does not delay the pan. Skip defaults are −15s and +30s, adjustable in 5 second steps and published to the lock screen. Speed runs from 0.5× to 3×. Sleep uses the player's wall-clock timer. Replay jumps back 10 seconds. A-B loop seeks back to A when playback reaches B.
 
-Backup and export of the library JSON and notes Markdown is a later milestone. So is a full play-through of a 9 hour file on a device.
+Jump history records a scrub, a tap on the timeline, or a jump to a note. It ignores playback, the skip buttons, double-tap skips, and the 10 second replay. A drag updates an in-memory jump and writes nothing until the finger lifts. Further seeks within about 1.8 seconds keep the first origin and the last landing spot, then one row is saved. The row is dropped when that distance is under 10 seconds. Pause, leaving the player, switching lessons, and the app leaving the foreground flush the pending jump immediately. Tapping a row seeks back to its origin and does not add a row. Times at an hour or longer use `h:mm:ss`.
+
+Backup and export of the library JSON and notes Markdown is a later milestone. Jump rows live in the same database and belong in that export. So does a full play-through of a 9 hour file on a device.
