@@ -11,13 +11,19 @@ type Marker = {
   positionMs: number;
 };
 
+export type ScrubSeekSource = 'scrub' | 'timeline';
+
 type ScrubBarProps = {
   durationMs: number;
   positionMs: number;
   heard: readonly ListenRange[];
   markers: readonly Marker[];
-  onSeek: (positionMs: number) => void;
+  onSeek: (positionMs: number, fromMs: number, source: ScrubSeekSource) => void;
   onScrub: (positionMs: number | null) => void;
+  /** Finger is down and moving. History stays in memory until release. */
+  onScrubPreview?: (fromMs: number, toMs: number) => void;
+  /** The drag was cancelled and should not replace an earlier pending jump. */
+  onScrubCancel?: () => void;
 };
 
 function clamp(value: number, max: number): number {
@@ -27,7 +33,16 @@ function clamp(value: number, max: number): number {
   return Math.min(max, Math.max(0, value));
 }
 
-export function ScrubBar({ durationMs, positionMs, heard, markers, onSeek, onScrub }: ScrubBarProps) {
+export function ScrubBar({
+  durationMs,
+  positionMs,
+  heard,
+  markers,
+  onSeek,
+  onScrub,
+  onScrubPreview,
+  onScrubCancel,
+}: ScrubBarProps) {
   const widthRef = useRef(1);
   const durationRef = useRef(durationMs);
   const positionRef = useRef(positionMs);
@@ -35,12 +50,16 @@ export function ScrubBar({ durationMs, positionMs, heard, markers, onSeek, onScr
   const previewRef = useRef<number | null>(null);
   const seekRef = useRef(onSeek);
   const scrubRef = useRef(onScrub);
+  const previewSeekRef = useRef(onScrubPreview);
+  const cancelScrubRef = useRef(onScrubCancel);
   const [preview, setPreview] = useState<number | null>(null);
 
   durationRef.current = durationMs;
   positionRef.current = positionMs;
   seekRef.current = onSeek;
   scrubRef.current = onScrub;
+  previewSeekRef.current = onScrubPreview;
+  cancelScrubRef.current = onScrubCancel;
 
   const gesture = useMemo(() => {
     const tap = Gesture.Tap()
@@ -50,8 +69,9 @@ export function ScrubBar({ durationMs, positionMs, heard, markers, onSeek, onScr
         if (duration <= 0) {
           return;
         }
+        const from = positionRef.current;
         const next = clamp((event.x / widthRef.current) * duration, duration);
-        seekRef.current(next);
+        seekRef.current(next, from, 'timeline');
       });
 
     const pan = Gesture.Pan()
@@ -72,16 +92,22 @@ export function ScrubBar({ durationMs, positionMs, heard, markers, onSeek, onScr
         previewRef.current = next;
         setPreview(next);
         scrubRef.current(next);
+        previewSeekRef.current?.(originRef.current, next);
       })
-      .onEnd(() => {
-        if (previewRef.current != null) {
-          seekRef.current(previewRef.current);
-        }
-      })
-      .onFinalize(() => {
+      .onFinalize((_event, success) => {
+        const landed = previewRef.current;
+        const origin = originRef.current;
         previewRef.current = null;
         setPreview(null);
         scrubRef.current(null);
+        if (landed == null) {
+          return;
+        }
+        if (success) {
+          seekRef.current(landed, origin, 'scrub');
+        } else {
+          cancelScrubRef.current?.();
+        }
       });
 
     return Gesture.Exclusive(tap, pan);

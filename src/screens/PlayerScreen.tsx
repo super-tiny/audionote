@@ -5,6 +5,7 @@ import { useIsPlaying, useProgress } from '@rntp/player';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
+import { clearJumps, deleteJump, listJumps } from '../db/jumps';
 import {
   deleteNote,
   getItem,
@@ -13,7 +14,7 @@ import {
   markMissing,
   rangesForItem,
 } from '../db/library';
-import type { AudioItem, Note } from '../db/types';
+import type { AudioItem, Jump, Note } from '../db/types';
 import { listenedFraction, type ListenRange } from '../library/ranges';
 import { locateAudioFile } from '../library/import';
 import { createId } from '../media/identity';
@@ -34,12 +35,21 @@ import {
   writeSkips,
   type SkipSettings,
 } from '../playback/engine';
+import {
+  cancelPendingJump,
+  flushJumpHistory,
+  recordJumpSeek,
+  revertJumpDrag,
+  subscribeJumpHistory,
+} from '../playback/jumpHistory';
+import type { RecordedJumpSource } from '../playback/jumpRecord';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
 import { BottomNav } from '../ui/BottomNav';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { displayTitle } from '../ui/displayTitle';
 import { InlineBanner } from '../ui/InlineBanner';
+import { JumpHistorySheet } from '../ui/JumpHistorySheet';
 import { ScrubBar } from '../ui/ScrubBar';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ScreenHeader } from '../ui/ScreenHeader';
@@ -63,6 +73,8 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const progress = useProgress(0.25);
   const [item, setItem] = useState<AudioItem | null>(() => getItem(itemId));
   const [notes, setNotes] = useState<Note[]>(() => listNotes(itemId));
+  const [jumps, setJumps] = useState<Jump[]>(() => listJumps(itemId));
+  const [jumpsOpen, setJumpsOpen] = useState(false);
   const [heard, setHeard] = useState<ListenRange[]>(() => rangesForItem(itemId));
   const [skips, setSkips] = useState<SkipSettings>(() => readSkips());
   const [speed, setSpeedState] = useState(item?.speed ?? 1);
@@ -87,31 +99,48 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     setItem(current);
     setNotes(listNotes(itemId));
     setHeard(rangesForItem(itemId));
-    if (!current) {
-      return;
+    if (current) {
+      setSpeedState(current.speed || 1);
+      void openItem(current)
+        .then((opened) => {
+          if (cancelled) {
+            return;
+          }
+          markMissing(itemId, !opened);
+          setMissing(!opened);
+          setItem(getItem(itemId));
+          if (!opened) {
+            setMessage('The file is missing. Locate it and the notes stay on this lesson.');
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setMessage(error instanceof Error ? error.message : 'Could not start playback.');
+          }
+        });
     }
-    setSpeedState(current.speed || 1);
-    void openItem(current)
-      .then((opened) => {
-        if (cancelled) {
-          return;
-        }
-        markMissing(itemId, !opened);
-        setMissing(!opened);
-        setItem(getItem(itemId));
-        if (!opened) {
-          setMessage('The file is missing. Locate it and the notes stay on this lesson.');
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setMessage(error instanceof Error ? error.message : 'Could not start playback.');
-        }
-      });
     return () => {
       cancelled = true;
+      flushJumpHistory();
     };
   }, [itemId]);
+
+  useEffect(() => {
+    setJumps(listJumps(itemId));
+    setJumpsOpen(false);
+    return subscribeJumpHistory((jump) => {
+      if (jump.itemId === itemId) {
+        setJumps(listJumps(itemId));
+      }
+    });
+  }, [itemId]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('blur', () => {
+      flushJumpHistory();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   useEffect(() => {
     const handle = setInterval(() => {
@@ -166,6 +195,32 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   function writeAndRead(next: SkipSettings): SkipSettings {
     writeSkips(next);
     return readSkips();
+  }
+
+  function rememberJump(fromMs: number, toMs: number, source: RecordedJumpSource, commit: 'defer' | 'now' | 'hold'): void {
+    recordJumpSeek({
+      itemId,
+      fromMs,
+      toMs,
+      source,
+      commit: commit === 'hold' ? 'hold' : playing ? 'defer' : 'now',
+    });
+  }
+
+  function restoreJump(jump: Jump): void {
+    cancelPendingJump();
+    setScrubMs(null);
+    seekToMs(jump.fromMs);
+  }
+
+  function removeJump(jump: Jump): void {
+    deleteJump(jump.id);
+    setJumps((current) => current.filter((entry) => entry.id !== jump.id));
+  }
+
+  function clearJumpList(): void {
+    clearJumps(itemId);
+    setJumps([]);
   }
 
   function addNote(): void {
@@ -254,11 +309,31 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             positionMs={scrubMs ?? progress.position * 1000}
             heard={heard}
             markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
-            onSeek={seekToMs}
+            onSeek={(toMs, fromMs, source) => {
+              seekToMs(toMs);
+              rememberJump(fromMs, toMs, source, 'defer');
+            }}
             onScrub={setScrubMs}
+            onScrubPreview={(fromMs, toMs) => rememberJump(fromMs, toMs, 'scrub', 'hold')}
+            onScrubCancel={revertJumpDrag}
           />
           <View style={styles.times}>
             <Text style={styles.time}>{formatClock(positionMs)}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={jumps.length > 0 ? `Jumps, ${jumps.length}` : 'Jumps'}
+              accessibilityHint="Opens positions you can return to"
+              onPress={() => {
+                setJumps(listJumps(itemId));
+                setJumpsOpen(true);
+              }}
+              style={styles.jumpsButton}
+            >
+              <Ionicons name="time-outline" size={16} color={jumps.length > 0 ? colors.accent : colors.muted} />
+              <Text style={[styles.jumpsButtonText, jumps.length > 0 && styles.jumpsButtonTextOn]}>
+                Jumps{jumps.length > 0 ? ` ${jumps.length}` : ''}
+              </Text>
+            </Pressable>
             <Text style={styles.time}>{durationMs ? formatClock(durationMs) : '—'}</Text>
           </View>
           <View style={styles.skipZones}>
@@ -437,7 +512,15 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           ) : (
             notes.map((note) => (
               <View key={note.id} style={styles.noteRow}>
-                <Pressable accessibilityRole="button" onPress={() => seekToMs(note.positionMs)} style={styles.noteMain}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    const fromMs = progress.position * 1000;
+                    seekToMs(note.positionMs);
+                    rememberJump(fromMs, note.positionMs, 'note', 'defer');
+                  }}
+                  style={styles.noteMain}
+                >
                   <Text style={styles.noteTime}>{formatClock(note.positionMs)}</Text>
                   <Text style={styles.noteText}>{note.text}</Text>
                 </Pressable>
@@ -460,6 +543,14 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           )}
         </View>
       </ScrollView>
+      <JumpHistorySheet
+        visible={jumpsOpen}
+        jumps={jumps}
+        onClose={() => setJumpsOpen(false)}
+        onReturn={restoreJump}
+        onDelete={removeJump}
+        onClear={clearJumpList}
+      />
       <BottomNav
         active="player"
         playerItemId={itemId}
@@ -540,7 +631,24 @@ const styles = StyleSheet.create({
   },
   times: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  jumpsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+  },
+  jumpsButtonText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  jumpsButtonTextOn: {
+    color: colors.accent,
   },
   time: {
     color: colors.text,

@@ -2,6 +2,7 @@ import TrackPlayer, { Event, PlayerCommand } from '@rntp/player';
 
 import { ensureDatabase } from '../db/open';
 import { writeSkips, readSkips } from './engine';
+import { cancelPausedJumpFlush, flushJumpHistoryIfStillPaused } from './jumpHistory';
 import { flushProgress, startProgressTicker } from './persist';
 
 /**
@@ -40,6 +41,9 @@ export function registerPlaybackSession(): void {
     TrackPlayer.addEventListener(Event.IsPlayingChanged, ({ playing }) => {
       if (!playing) {
         flushProgress();
+        flushJumpHistoryIfStillPaused();
+      } else {
+        cancelPausedJumpFlush();
       }
     });
     startProgressTicker();

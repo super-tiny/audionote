@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 
 import { LibraryScreen } from '../screens/LibraryScreen';
 import { PlayerScreen } from '../screens/PlayerScreen';
+import { flushJumpHistory } from '../playback/jumpHistory';
 import { flushProgress } from '../playback/persist';
 import type { RootStackParamList } from './types';
 
@@ -27,6 +28,7 @@ export function RootNavigator() {
         const route = navigationRef.getCurrentRoute();
         if (route?.name === 'Library') {
           flushProgress();
+          flushJumpHistory();
         }
       }}
     >

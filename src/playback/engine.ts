@@ -3,6 +3,7 @@ import TrackPlayer, { PlayerCommand } from '@rntp/player';
 import { getSetting, savePlayback, setSetting } from '../db/library';
 import type { AudioItem } from '../db/types';
 import { releaseItem, resolveItemUri } from '../library/files';
+import { flushJumpHistory } from './jumpHistory';
 import { flushProgress } from './persist';
 
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
@@ -50,6 +51,7 @@ function clampSkip(ms: number): number {
 
 export async function openItem(item: AudioItem): Promise<boolean> {
   flushProgress();
+  flushJumpHistory();
   if (heldBookmark && heldBookmark !== item.bookmark) {
     releaseItem({ bookmark: heldBookmark });
     heldBookmark = null;
@@ -82,6 +84,7 @@ export function togglePlayback(): void {
   if (TrackPlayer.isPlaying()) {
     TrackPlayer.pause();
     flushProgress();
+    flushJumpHistory();
   } else {
     TrackPlayer.play();
   }
@@ -92,6 +95,7 @@ export function seekToMs(positionMs: number): void {
   TrackPlayer.seekTo(Math.max(0, positionMs) / 1000);
 }
 
+/** Skip buttons, double-tap, and replay. These are not jump history. */
 export function skipBy(ms: number): void {
   flushProgress();
   TrackPlayer.seekBy(ms / 1000);
