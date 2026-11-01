@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useIsPlaying, useProgress } from '@rntp/player';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import {
   deleteNote,
@@ -20,27 +19,20 @@ import { createId } from '../media/identity';
 import { formatClock, notePositionMs } from '../notes/capture';
 import type { RootStackParamList } from '../navigation/types';
 import {
-  SLEEP_MINUTES,
-  SPEEDS,
   openItem,
   readSkips,
-  replayLastTenSeconds,
   seekToMs,
   setSpeed,
-  skipBy,
   startSleep,
   stopSleep,
-  togglePlayback,
   writeSkips,
-  type SkipSettings,
 } from '../playback/engine';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
-import { BottomNav } from '../ui/BottomNav';
-import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { displayTitle } from '../ui/displayTitle';
 import { InlineBanner } from '../ui/InlineBanner';
-import { ScrubBar } from '../ui/ScrubBar';
+import { PlaybackDock } from '../ui/PlaybackDock';
+import { PlaybackSettingsSheet, type LoopPoints } from '../ui/PlaybackSettingsSheet';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ScreenHeader } from '../ui/ScreenHeader';
 import { actionHaptic } from '../ui/haptics';
@@ -52,11 +44,6 @@ type PlayerScreenProps = NativeStackScreenProps<RootStackParamList, 'Player'> & 
   onPlayerContext: (itemId: string | null, title: string | null) => void;
 };
 
-type LoopPoints = {
-  aMs: number | null;
-  bMs: number | null;
-};
-
 export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScreenProps) {
   const { itemId } = route.params;
   const playing = useIsPlaying();
@@ -64,7 +51,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [item, setItem] = useState<AudioItem | null>(() => getItem(itemId));
   const [notes, setNotes] = useState<Note[]>(() => listNotes(itemId));
   const [heard, setHeard] = useState<ListenRange[]>(() => rangesForItem(itemId));
-  const [skips, setSkips] = useState<SkipSettings>(() => readSkips());
+  const [skips, setSkips] = useState(() => readSkips());
   const [speed, setSpeedState] = useState(item?.speed ?? 1);
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
   const [loop, setLoop] = useState<LoopPoints>({ aMs: null, bMs: null });
@@ -73,9 +60,8 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [missing, setMissing] = useState(item?.missing ?? false);
   const [message, setMessage] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const loopGuard = useRef(false);
-  const skipsRef = useRef(skips);
-  skipsRef.current = skips;
 
   useEffect(() => {
     onPlayerContext(itemId, item?.title ?? null);
@@ -137,37 +123,6 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     }
   }, [positionMs, playing, loop, scrubMs]);
 
-  const backTap = useMemo(
-    () =>
-      Gesture.Tap()
-        .numberOfTaps(2)
-        .runOnJS(true)
-        .onEnd(() => {
-          skipBy(-skipsRef.current.backMs);
-        }),
-    [],
-  );
-  const forwardTap = useMemo(
-    () =>
-      Gesture.Tap()
-        .numberOfTaps(2)
-        .runOnJS(true)
-        .onEnd(() => {
-          skipBy(skipsRef.current.forwardMs);
-        }),
-    [],
-  );
-
-  function changeSkip(which: keyof SkipSettings, delta: number): void {
-    const next = writeAndRead({ ...skips, [which]: skips[which] + delta });
-    setSkips(next);
-  }
-
-  function writeAndRead(next: SkipSettings): SkipSettings {
-    writeSkips(next);
-    return readSkips();
-  }
-
   function addNote(): void {
     const text = draft.trim();
     if (!text || !item) {
@@ -200,277 +155,162 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     }
   }
 
-  const speedSummary = `${speed}×`;
-  const sleepSummary =
-    sleepMinutes != null ? `${sleepMinutes} min` : 'Off';
-  const loopSummary =
-    loop.aMs != null && loop.bMs != null
-      ? `${formatClock(loop.aMs)} – ${formatClock(loop.bMs)}`
-      : 'None';
   const heardFraction = listenedFraction(heard, durationMs);
 
   if (!item) {
     return (
       <ScreenBackdrop>
-      <View style={styles.screen}>
-        <ScreenHeader title="Lesson unavailable" onBack={() => navigation.goBack()} backLabel="Library" />
-        <Text style={styles.message}>This lesson is no longer in the library.</Text>
-        <BottomNav
-          active="player"
-          playerItemId={itemId}
-          playerTitle={null}
-          onLibrary={() => navigation.navigate('Library')}
-          onPlayer={() => navigation.navigate('Player', { itemId })}
-        />
-      </View>
+        <View style={styles.screen}>
+          <ScreenHeader title="Lesson unavailable" onBack={() => navigation.goBack()} backLabel="Library" />
+          <Text style={styles.message}>This lesson is no longer in the library.</Text>
+        </View>
       </ScreenBackdrop>
     );
   }
 
   return (
     <ScreenBackdrop>
-    <View style={styles.screen}>
-      <ScreenHeader
-        title={displayTitle(item.title)}
-        subtitle={missing ? 'File missing' : `${speedSummary} · ${formatClock(positionMs)} / ${durationMs ? formatClock(durationMs) : '—'}`}
-        onBack={() => navigation.goBack()}
-        backLabel="Library"
-      />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.hero}>
-          <ArtworkAvatar title={item.title} size={88} />
-          <View style={styles.heroMeta}>
-            <Text style={styles.heroTitle}>{displayTitle(item.title, 52)}</Text>
+      <View style={styles.screen}>
+        <ScreenHeader
+          title=""
+          onBack={() => navigation.goBack()}
+          backLabel=""
+          backIcon="chevron-down"
+          actions={[
+            {
+              icon: 'options-outline',
+              label: 'Playback settings',
+              onPress: () => setSettingsOpen(true),
+            },
+          ]}
+        />
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.hero}>
+            <ArtworkAvatar title={item.title} size={200} />
+            <Text style={styles.heroTitle}>{displayTitle(item.title, 56)}</Text>
             <View style={styles.heroChips}>
               <Text style={styles.heroChip}>{(item.format ?? 'audio').toUpperCase()}</Text>
               <Text style={styles.heroChip}>{Math.round(heardFraction * 100)}% heard</Text>
               <Text style={styles.heroChip}>{notes.length} notes</Text>
+              {missing ? <Text style={[styles.heroChip, styles.heroChipDanger]}>Missing file</Text> : null}
             </View>
           </View>
-        </View>
-        <View style={styles.scrubBlock}>
-          <ScrubBar
-            durationMs={durationMs}
-            positionMs={scrubMs ?? progress.position * 1000}
-            heard={heard}
-            markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
-            onSeek={seekToMs}
-            onScrub={setScrubMs}
-          />
-          <View style={styles.times}>
-            <Text style={styles.time}>{formatClock(positionMs)}</Text>
-            <Text style={styles.time}>{durationMs ? formatClock(durationMs) : '—'}</Text>
-          </View>
-          <View style={styles.skipZones}>
-            <GestureDetector gesture={backTap}>
-              <View style={styles.skipZone} accessibilityLabel={`Double-tap to rewind ${Math.round(skips.backMs / 1000)} seconds`}>
-                <Ionicons name="play-back-outline" size={18} color={colors.muted} />
-                <Text style={styles.skipHint}>−{Math.round(skips.backMs / 1000)}s</Text>
-              </View>
-            </GestureDetector>
-            <GestureDetector gesture={forwardTap}>
-              <View style={styles.skipZone} accessibilityLabel={`Double-tap to skip forward ${Math.round(skips.forwardMs / 1000)} seconds`}>
-                <Ionicons name="play-forward-outline" size={18} color={colors.muted} />
-                <Text style={styles.skipHint}>+{Math.round(skips.forwardMs / 1000)}s</Text>
-              </View>
-            </GestureDetector>
-          </View>
-        </View>
 
-        {loop.aMs != null && loop.bMs != null ? (
-          <View style={styles.loopBanner}>
-            <Ionicons name="repeat" size={16} color={colors.accent} />
-            <Text style={styles.loopLabel}>
-              Loop {formatClock(loop.aMs)} – {formatClock(loop.bMs)}
-            </Text>
-          </View>
-        ) : null}
-        {message ? (
-          <InlineBanner message={message} tone="error" onDismiss={() => setMessage(null)} />
-        ) : null}
-        {missing ? (
-          <Pressable accessibilityRole="button" onPress={() => void onLocate()} style={styles.primary}>
-            <Ionicons name="locate-outline" size={18} color={colors.background} />
-            <Text style={styles.primaryText}>Locate file</Text>
-          </Pressable>
-        ) : null}
+          {loop.aMs != null && loop.bMs != null && loop.bMs > loop.aMs ? (
+            <View style={styles.loopBanner}>
+              <Ionicons name="repeat" size={16} color={colors.accent} />
+              <Text style={styles.loopLabel}>
+                Loop {formatClock(loop.aMs)} – {formatClock(loop.bMs)}
+              </Text>
+            </View>
+          ) : null}
 
-        <View style={styles.transportCard}>
-          <View style={styles.skipControl}>
-            <Pressable accessibilityRole="button" onPress={() => changeSkip('backMs', -5000)} style={styles.step}>
-              <Text style={styles.stepText}>−</Text>
+          {message ? <InlineBanner message={message} tone="error" onDismiss={() => setMessage(null)} /> : null}
+          {missing ? (
+            <Pressable accessibilityRole="button" onPress={() => void onLocate()} style={styles.primary}>
+              <Ionicons name="locate-outline" size={18} color={colors.background} />
+              <Text style={styles.primaryText}>Locate file</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => skipBy(-skips.backMs)} style={styles.roundSkip}>
-              <Ionicons name="play-back" size={22} color={colors.text} />
-              <Text style={styles.roundSkipText}>{Math.round(skips.backMs / 1000)}s</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => changeSkip('backMs', 5000)} style={styles.step}>
-              <Text style={styles.stepText}>+</Text>
-            </Pressable>
-          </View>
-          <AppPressable
-            accessibilityRole="button"
-            haptic
-            onPress={() => {
-              actionHaptic();
-              togglePlayback();
-            }}
-            style={styles.play}
-          >
-            <Ionicons name={playing ? 'pause' : 'play'} size={28} color={colors.background} />
-          </AppPressable>
-          <View style={styles.skipControl}>
-            <Pressable accessibilityRole="button" onPress={() => changeSkip('forwardMs', -5000)} style={styles.step}>
-              <Text style={styles.stepText}>−</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => skipBy(skips.forwardMs)} style={styles.roundSkip}>
-              <Ionicons name="play-forward" size={22} color={colors.text} />
-              <Text style={styles.roundSkipText}>{Math.round(skips.forwardMs / 1000)}s</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => changeSkip('forwardMs', 5000)} style={styles.step}>
-              <Text style={styles.stepText}>+</Text>
-            </Pressable>
-          </View>
-        </View>
+          ) : null}
 
-        <CollapsibleSection title="Playback speed" summary={speedSummary}>
-          <View style={styles.chips}>
-            {SPEEDS.map((value) => (
-              <Pressable
-                key={value}
+          <View style={styles.notesCard}>
+            <Text style={styles.notesTitle}>Notes</Text>
+            <View style={styles.composer}>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder={`Note at ${formatClock(notePositionMs(positionMs))}`}
+                placeholderTextColor={colors.muted}
+                style={styles.noteInput}
+                multiline
+              />
+              <AppPressable
                 accessibilityRole="button"
+                haptic
                 onPress={() => {
-                  setSpeed(value);
-                  setSpeedState(value);
+                  actionHaptic();
+                  addNote();
                 }}
-                style={[styles.chip, speed === value && styles.chipOn]}
+                style={styles.addNote}
               >
-                <Text style={[styles.chipText, speed === value && styles.chipTextOn]}>{value}×</Text>
-              </Pressable>
-            ))}
+                <Text style={styles.addNoteText}>Add</Text>
+              </AppPressable>
+            </View>
+            {notes.length === 0 ? (
+              <Text style={styles.noteEmpty}>Notes land a few seconds before the moment you tap Add.</Text>
+            ) : (
+              notes.map((note) => (
+                <View key={note.id} style={styles.noteRow}>
+                  <Pressable accessibilityRole="button" onPress={() => seekToMs(note.positionMs)} style={styles.noteMain}>
+                    <Text style={styles.noteTime}>{formatClock(note.positionMs)}</Text>
+                    <Text style={styles.noteText}>{note.text}</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      if (pendingDeleteId === note.id) {
+                        deleteNote(note.id);
+                        setPendingDeleteId(null);
+                        setNotes(listNotes(itemId));
+                      } else {
+                        setPendingDeleteId(note.id);
+                      }
+                    }}
+                  >
+                    <Text style={styles.deleteNote}>{pendingDeleteId === note.id ? 'Confirm' : 'Delete'}</Text>
+                  </Pressable>
+                </View>
+              ))
+            )}
           </View>
-        </CollapsibleSection>
+        </ScrollView>
 
-        <CollapsibleSection title="Sleep timer" summary={sleepSummary}>
-          <View style={styles.chips}>
-            {SLEEP_MINUTES.map((minutes) => (
-              <Pressable
-                key={minutes}
-                accessibilityRole="button"
-                onPress={() => {
-                  if (sleepMinutes === minutes) {
-                    stopSleep();
-                    setSleepMinutes(null);
-                  } else {
-                    startSleep(minutes);
-                    setSleepMinutes(minutes);
-                  }
-                }}
-                style={[styles.chip, sleepMinutes === minutes && styles.chipOn]}
-              >
-                <Text style={[styles.chipText, sleepMinutes === minutes && styles.chipTextOn]}>{minutes}m</Text>
-              </Pressable>
-            ))}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                stopSleep();
-                setSleepMinutes(null);
-              }}
-              style={styles.chip}
-            >
-              <Text style={styles.chipText}>Off</Text>
-            </Pressable>
-          </View>
-        </CollapsibleSection>
+        <PlaybackDock
+          variant="full"
+          title={item.title}
+          durationMs={durationMs}
+          positionMs={positionMs}
+          heard={heard}
+          markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
+          scrubMs={scrubMs}
+          onScrub={setScrubMs}
+          onSeek={seekToMs}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
 
-        <CollapsibleSection title="Loop & replay" summary={loopSummary}>
-          <View style={styles.chips}>
-            <Pressable accessibilityRole="button" onPress={replayLastTenSeconds} style={styles.chip}>
-              <Text style={styles.chipText}>Replay 10s</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setLoop((current) => ({ ...current, aMs: Math.round(positionMs) }))}
-              style={styles.chip}
-            >
-              <Text style={styles.chipText}>Set A</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setLoop((current) => ({ ...current, bMs: Math.round(positionMs) }))}
-              style={styles.chip}
-            >
-              <Text style={styles.chipText}>Set B</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => setLoop({ aMs: null, bMs: null })} style={styles.chip}>
-              <Text style={styles.chipText}>Clear</Text>
-            </Pressable>
-          </View>
-        </CollapsibleSection>
-
-        <View style={styles.notesCard}>
-          <Text style={styles.notesTitle}>Notes</Text>
-          <View style={styles.composer}>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={`Note at ${formatClock(notePositionMs(positionMs))}`}
-              placeholderTextColor={colors.muted}
-              style={styles.noteInput}
-              multiline
-            />
-            <AppPressable
-              accessibilityRole="button"
-              haptic
-              onPress={() => {
-                actionHaptic();
-                addNote();
-              }}
-              style={styles.addNote}
-            >
-              <Text style={styles.addNoteText}>Add</Text>
-            </AppPressable>
-          </View>
-          {notes.length === 0 ? (
-            <Text style={styles.noteEmpty}>Notes land a few seconds before the moment you tap Add.</Text>
-          ) : (
-            notes.map((note) => (
-              <View key={note.id} style={styles.noteRow}>
-                <Pressable accessibilityRole="button" onPress={() => seekToMs(note.positionMs)} style={styles.noteMain}>
-                  <Text style={styles.noteTime}>{formatClock(note.positionMs)}</Text>
-                  <Text style={styles.noteText}>{note.text}</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
-                    if (pendingDeleteId === note.id) {
-                      deleteNote(note.id);
-                      setPendingDeleteId(null);
-                      setNotes(listNotes(itemId));
-                    } else {
-                      setPendingDeleteId(note.id);
-                    }
-                  }}
-                >
-                  <Text style={styles.deleteNote}>{pendingDeleteId === note.id ? 'Confirm' : 'Delete'}</Text>
-                </Pressable>
-              </View>
-            ))
-          )}
-        </View>
-      </ScrollView>
-      <BottomNav
-        active="player"
-        playerItemId={itemId}
-        playerTitle={item.title}
-        onLibrary={() => navigation.navigate('Library')}
-        onPlayer={() => navigation.navigate('Player', { itemId })}
-      />
-    </View>
+        <PlaybackSettingsSheet
+          visible={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          speed={speed}
+          onSpeed={(value) => {
+            setSpeed(value);
+            setSpeedState(value);
+          }}
+          sleepMinutes={sleepMinutes}
+          onSleep={(minutes) => {
+            if (minutes == null) {
+              stopSleep();
+              setSleepMinutes(null);
+            } else {
+              startSleep(minutes);
+              setSleepMinutes(minutes);
+            }
+          }}
+          loop={loop}
+          onLoop={setLoop}
+          positionMs={positionMs}
+          skips={skips}
+          onSkips={(next) => {
+            writeSkips(next);
+            setSkips(readSkips());
+          }}
+        />
+      </View>
     </ScreenBackdrop>
   );
 }
+
+const DOCK_SPACE = 168;
 
 const styles = StyleSheet.create({
   screen: {
@@ -479,28 +319,26 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingBottom: DOCK_SPACE,
     gap: spacing.md,
   },
   hero: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  heroMeta: {
-    flex: 1,
-    gap: spacing.sm,
+    gap: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
   heroTitle: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
-    lineHeight: 26,
+    textAlign: 'center',
+    lineHeight: 28,
   },
   heroChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'center',
     gap: spacing.sm,
   },
   heroChip: {
@@ -513,44 +351,14 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     overflow: 'hidden',
   },
-  scrubBlock: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  skipZones: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  skipZone: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 40,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surface,
-  },
-  skipHint: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  times: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  time: {
-    color: colors.text,
-    fontVariant: ['tabular-nums'],
-    fontSize: 14,
-    fontWeight: '600',
+  heroChipDanger: {
+    color: colors.danger,
+    backgroundColor: 'rgba(240, 164, 164, 0.14)',
   },
   loopBanner: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.sm,
     backgroundColor: colors.accentSoft,
     borderRadius: radii.md,
@@ -582,83 +390,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
   },
-  transportCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-  },
-  skipControl: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    flex: 1,
-  },
-  step: {
-    minWidth: 28,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepText: {
-    color: colors.muted,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  roundSkip: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-    gap: 2,
-  },
-  roundSkipText: {
-    color: colors.muted,
-    fontSize: 11,
-    fontVariant: ['tabular-nums'],
-  },
-  play: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  chip: {
-    minHeight: 36,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipOn: {
-    backgroundColor: colors.accent,
-  },
-  chipText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  chipTextOn: {
-    color: colors.background,
-  },
   notesCard: {
     backgroundColor: colors.card,
     borderRadius: radii.lg,
     padding: spacing.md,
     gap: spacing.sm,
-    marginBottom: spacing.sm,
   },
   notesTitle: {
     color: colors.text,

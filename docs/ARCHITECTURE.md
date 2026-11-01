@@ -9,7 +9,7 @@ Expo SDK 58 (React Native 0.88, New Architecture) with continuous native generat
 | Concern | Module |
 | --- | --- |
 | Entry | `index.ts` registers the playback session, then the root component |
-| Screens | `@react-navigation/native-stack` in `src/navigation/RootNavigator.tsx`. Library and player screens share a bottom tab bar for navigation |
+| Screens | `@react-navigation/native-stack` in `src/navigation/RootNavigator.tsx`. Library shows a fixed mini player when audio is active; the full player pins transport and scrubbing to the bottom dock |
 | Playback | `@rntp/player` (React Native Track Player v5). `src/playback/session.ts` sets up speech playback, lock-screen commands, and a one-second progress ticker |
 | Library database | `expo-sqlite` via `src/db/open.ts`. Schema version 2 |
 | Lists and gestures | `@shopify/flash-list`, `react-native-gesture-handler`, `react-native-reanimated` + `react-native-worklets` |

@@ -19,10 +19,10 @@ import { formatClock, formatHours } from '../notes/capture';
 import type { RootStackParamList } from '../navigation/types';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
-import { BottomNav } from '../ui/BottomNav';
 import { displayTitle } from '../ui/displayTitle';
 import { InlineBanner } from '../ui/InlineBanner';
-import { MiniNowPlayingBar } from '../ui/MiniNowPlayingBar';
+import { PlaybackDock } from '../ui/PlaybackDock';
+import { AboutSheet } from '../ui/AboutSheet';
 import { NavigationMenu } from '../ui/NavigationMenu';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ScreenHeader } from '../ui/ScreenHeader';
@@ -83,6 +83,7 @@ export function LibraryScreen({
   const [status, setStatus] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     const handle = setTimeout(() => setApplied(query), 200);
@@ -188,8 +189,15 @@ export function LibraryScreen({
             disabled: true,
             onPress: () => undefined,
           },
+          {
+            icon: 'information-circle-outline',
+            label: 'About AudioNote',
+            detail: 'GitHub, contribute, issues, features',
+            onPress: () => setAboutOpen(true),
+          },
         ]}
       />
+      <AboutSheet visible={aboutOpen} onClose={() => setAboutOpen(false)} />
       <View style={styles.toolbar}>
         <View style={styles.searchWrap}>
           <Ionicons name="search" size={18} color={colors.muted} style={styles.searchIcon} />
@@ -215,17 +223,14 @@ export function LibraryScreen({
         </Pressable>
       </View>
       {status ? <InlineBanner message={status} tone="success" onDismiss={() => setStatus(null)} /> : null}
-      {playerItemId && playerTitle ? (
-        <MiniNowPlayingBar
-          title={playerTitle}
-          onOpen={() => navigation.navigate('Player', { itemId: playerItemId })}
-        />
-      ) : null}
       <FlashList
         data={rows}
         keyExtractor={(row) => row.item.id}
         style={styles.list}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          playerItemId ? styles.listContentWithDock : null,
+        ]}
         ListHeaderComponent={
           <>
             {resume.length ? (
@@ -347,17 +352,13 @@ export function LibraryScreen({
           );
         }}
       />
-      <BottomNav
-        active="library"
-        playerItemId={playerItemId}
-        playerTitle={playerTitle}
-        onLibrary={() => navigation.navigate('Library')}
-        onPlayer={() => {
-          if (playerItemId) {
-            navigation.navigate('Player', { itemId: playerItemId });
-          }
-        }}
-      />
+      {playerItemId && playerTitle ? (
+        <PlaybackDock
+          variant="mini"
+          title={playerTitle}
+          onOpen={() => navigation.navigate('Player', { itemId: playerItemId })}
+        />
+      ) : null}
       </View>
     </ScreenBackdrop>
   );
@@ -424,6 +425,9 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
+  },
+  listContentWithDock: {
+    paddingBottom: 96,
   },
   resumeBlock: {
     marginBottom: spacing.lg,

@@ -16,6 +16,7 @@ type ScreenHeaderProps = {
   subtitle?: string;
   onBack?: () => void;
   backLabel?: string;
+  backIcon?: keyof typeof Ionicons.glyphMap;
   onMenu?: () => void;
   actions?: HeaderAction[];
 };
@@ -25,6 +26,7 @@ export function ScreenHeader({
   subtitle,
   onBack,
   backLabel = 'Back',
+  backIcon = 'chevron-back',
   onMenu,
   actions = [],
 }: ScreenHeaderProps) {
@@ -35,8 +37,8 @@ export function ScreenHeader({
       <View style={styles.row}>
         {onBack ? (
           <Pressable accessibilityRole="button" accessibilityLabel={backLabel} onPress={onBack} style={styles.back}>
-            <Ionicons name="chevron-back" size={24} color={colors.accent} />
-            <Text style={styles.backText}>{backLabel}</Text>
+            <Ionicons name={backIcon} size={24} color={colors.accent} />
+            {backLabel ? <Text style={styles.backText}>{backLabel}</Text> : null}
           </Pressable>
         ) : onMenu ? (
           <Pressable accessibilityRole="button" accessibilityLabel="Open menu" onPress={onMenu} style={styles.menu}>
@@ -60,9 +62,11 @@ export function ScreenHeader({
           ))}
         </View>
       </View>
-      <Text style={styles.title} numberOfLines={2}>
-        {title}
-      </Text>
+      {title ? (
+        <Text style={styles.title} numberOfLines={2}>
+          {title}
+        </Text>
+      ) : null}
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
     </View>
   );
