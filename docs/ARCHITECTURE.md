@@ -58,7 +58,9 @@ npx expo prebuild --clean --no-install
 
 ### Android signing
 
-`plugins/withAndroidReleaseSigning.js` appends a Gradle snippet. When `AUDIONOTE_RELEASE_SIGNING=required` and the upload keystore is missing, Gradle fails instead of using the debug certificate. When the keystore path, store password, key alias, and key password are all set, the release build type uses that keystore. Otherwise the Expo/React Native release build type keeps `signingConfigs.debug`.
+`plugins/withAndroidReleaseSigning.js` edits `android/app/build.gradle` during prebuild. When `AUDIONOTE_RELEASE_SIGNING=required` and the upload keystore is missing, Gradle fails instead of using the debug certificate. When the keystore path, store password, key alias, and key password are all set, the release build type uses that keystore. Otherwise the release build type keeps `signingConfigs.debug`.
+
+The upload keystore has to be selected while the release build type is being configured. Android Gradle Plugin copies that choice into the release variant. Setting `signingConfig` later, from `afterEvaluate`, does not change the certificate on the APK: `assembleRelease` still signs with the debug keystore. The plugin assigns `signingConfigs.audionoteRelease` inside the release build type and again in `androidComponents.finalizeDsl`, which runs before the variant is locked. After the variant exists, configuration fails if its store file is not the upload keystore.
 
 `scripts/build-android.sh` selects the mode:
 
