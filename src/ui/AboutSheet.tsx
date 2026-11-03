@@ -59,7 +59,7 @@ export function AboutSheet({ visible, onClose }: AboutSheetProps) {
         <Text style={styles.title}>About AudioNote</Text>
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
           <Text style={styles.lead}>
-            AudioNote helps you listen through long local lessons, resume reliably, and capture timestamped notes—all on your device.
+            AudioNote helps you listen through long local lessons, return to the last point you played, see how much you have actually heard, step back through jump history, and capture timestamped notes—all on your device.
           </Text>
           <Text style={styles.version}>Version {version}</Text>
           <Text style={styles.sectionTitle}>Open source on GitHub</Text>
