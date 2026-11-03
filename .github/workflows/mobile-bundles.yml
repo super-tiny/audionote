@@ -1,5 +1,9 @@
 name: Mobile bundles
 
+# Pull requests do not receive signing secrets, including pull requests opened
+# from this repository. Fork pull requests cannot receive them either. Only
+# pushes to main, v* tags, and manual runs are production builds.
+
 on:
   pull_request:
   push:
@@ -16,17 +20,42 @@ permissions:
 
 jobs:
   android:
-    name: Android APK and AAB
+    name: Android production APK and AAB
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    env:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
+      - name: Require Android signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          require_secret() {
+            local value="$1" name="$2"
+            if [[ -z "${value//[[:space:]]/}" ]]; then
+              printf 'Missing GitHub Actions secret: %s\n' "$name" >&2
+              missing=1
+            fi
+          }
+          require_secret "${ANDROID_KEYSTORE_BASE64:-}" ANDROID_KEYSTORE_BASE64
+          require_secret "${ANDROID_KEYSTORE_PASSWORD:-}" ANDROID_KEYSTORE_PASSWORD
+          require_secret "${ANDROID_KEY_ALIAS:-}" ANDROID_KEY_ALIAS
+          require_secret "${ANDROID_KEY_PASSWORD:-}" ANDROID_KEY_PASSWORD
+          if [[ "$missing" -ne 0 ]]; then
+            echo "Production Android builds require the upload keystore secrets. Pull requests do not receive them." >&2
+            echo "Refusing to build an APK signed with the debug certificate." >&2
+            exit 1
+          fi
+          echo "Android production signing secrets are set."
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -79,17 +108,45 @@ jobs:
           echo "ANDROID_VERSION_CODE=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Build release APK and AAB
+        env:
+          AUDIONOTE_RELEASE_SIGNING: required
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: bash scripts/build-android.sh
 
-      - name: Upload APK
+      - name: Require production certificate verification
+        run: |
+          set -euo pipefail
+          stamp="android/app/build/outputs/audionote-production-signing.sha256"
+          if [[ -f android/app/build/outputs/DEBUG-SIGNING.txt ]]; then
+            echo "Refusing to upload: production build produced a debug signing marker." >&2
+            exit 1
+          fi
+          if [[ ! -s "$stamp" ]]; then
+            echo "Refusing to upload: the APK certificate was not verified against the upload keystore." >&2
+            exit 1
+          fi
+          fingerprint="$(tr -d '[:space:]' < "$stamp")"
+          if [[ ! "$fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Refusing to upload: the signing verification record is invalid." >&2
+            exit 1
+          fi
+          echo "Upload certificate SHA-256 fingerprint recorded. Publishing production artifacts."
+
+      - name: Upload production APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: audionote-android-apk
+          # Keep this glob on the APK. Do not widen it to the outputs directory.
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload AAB
+      - name: Upload production AAB
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: audionote-android-aab
@@ -97,19 +154,113 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  ios:
-    name: iOS IPA
-    runs-on: macos-26
+  android-pr:
+    name: Android PR debug APK and AAB
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
-    env:
-      IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
-      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
-      IOS_CODE_SIGN_IDENTITY: ${{ secrets.IOS_CODE_SIGN_IDENTITY }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install \
+            "build-tools;37.0.0" \
+            "ndk;27.1.12297006" \
+            "cmake;3.30.5"
+          if ! sdkmanager --install "platforms;android-37"; then
+            sdkmanager --install "platforms;android-37.0"
+          fi
+          if [[ -d "${ANDROID_HOME}/platforms/android-37.0" && ! -e "${ANDROID_HOME}/platforms/android-37" ]]; then
+            ln -s android-37.0 "${ANDROID_HOME}/platforms/android-37"
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set build version
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          echo "APP_VERSION=${version}" >> "$GITHUB_ENV"
+          echo "ANDROID_VERSION_CODE=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Build debug-signed APK and AAB
+        env:
+          AUDIONOTE_RELEASE_SIGNING: debug
+        run: bash scripts/build-android.sh
+
+      - name: Require debug signing marker
+        run: |
+          set -euo pipefail
+          marker="android/app/build/outputs/DEBUG-SIGNING.txt"
+          if [[ -f android/app/build/outputs/audionote-production-signing.sha256 ]]; then
+            echo "Pull-request build produced a production signing verification." >&2
+            exit 1
+          fi
+          if [[ ! -s "$marker" ]]; then
+            echo "Pull-request build did not mark the artifact as debug-signed." >&2
+            exit 1
+          fi
+          if ! grep -F -q "Do not submit" "$marker"; then
+            echo "Debug signing marker is missing its store-submission warning." >&2
+            exit 1
+          fi
+
+      - name: Upload PR debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audionote-android-pr-debug-apk
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/DEBUG-SIGNING.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload PR debug AAB
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audionote-android-pr-debug-aab
+          path: |
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/outputs/DEBUG-SIGNING.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: iOS IPA
+    if: github.event_name != 'pull_request'
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -132,12 +283,56 @@ jobs:
           echo "IOS_BUILD_NUMBER=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Build IPA
+        env:
+          IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_CODE_SIGN_IDENTITY: ${{ secrets.IOS_CODE_SIGN_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: bash scripts/build-ios.sh
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: audionote-ios-ipa
+          path: dist/ios/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+  ios-pr:
+    name: iOS PR IPA
+    if: github.event_name == 'pull_request'
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set build version
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          echo "APP_VERSION=${version}" >> "$GITHUB_ENV"
+          echo "IOS_BUILD_NUMBER=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Build unsigned IPA
+        run: bash scripts/build-ios.sh
+
+      - name: Upload PR IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: audionote-ios-pr-ipa
           path: dist/ios/*.ipa
           if-no-files-found: error
           retention-days: 14
