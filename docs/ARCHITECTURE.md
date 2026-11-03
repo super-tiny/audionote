@@ -58,34 +58,50 @@ npx expo prebuild --clean --no-install
 
 ### Android signing
 
-`plugins/withAndroidReleaseSigning.js` appends a Gradle snippet:
+`plugins/withAndroidReleaseSigning.js` appends a Gradle snippet. When `AUDIONOTE_RELEASE_SIGNING=required` and the upload keystore is missing, Gradle fails instead of using the debug certificate. When the keystore path, store password, key alias, and key password are all set, the release build type uses that keystore. Otherwise the Expo/React Native release build type keeps `signingConfigs.debug`.
 
-- If `AUDIONOTE_UPLOAD_STORE_FILE` is set (env or Gradle property), release uses that keystore, plus `AUDIONOTE_UPLOAD_STORE_PASSWORD`, `AUDIONOTE_UPLOAD_KEY_ALIAS`, and `AUDIONOTE_UPLOAD_KEY_PASSWORD`.
-- Otherwise the Expo/React Native release build type keeps `signingConfigs.debug`, so the APK installs without a committed secret.
+`scripts/build-android.sh` selects the mode:
 
-CI maps repository secrets into those variables:
+| `AUDIONOTE_RELEASE_SIGNING` | Behavior |
+| --- | --- |
+| `required` | Production. Credentials are mandatory. After Gradle, `apksigner verify --verbose --print-certs` must show the upload certificate on every APK, and `keytool -printcert` must show it on every AAB. The script then writes `audionote-production-signing.sha256`. |
+| `debug` | Ignores upload-key variables, keeps the debug certificate, and writes `DEBUG-SIGNING.txt`. Not for Myket, Play, or any other store. |
+| unset or `auto` | Uses `required` when the upload-key credentials are complete, and `debug` when none are set. Partial credentials fail. |
+
+Generate the upload keystore once and reuse it for every store release. For a PKCS12 keystore, the store password and key password are the same. Do not commit the keystore or its passwords. The script decodes `ANDROID_KEYSTORE_BASE64` into `.keystore/` (gitignored, mode `600`) and deletes that file when the process exits. It does not print the keystore or the passwords.
+
+GitHub Actions secrets for production Android builds:
 
 | Secret | Use |
 | --- | --- |
-| `ANDROID_KEYSTORE_BASE64` | Base64 of the upload `.jks` / `.keystore` |
+| `ANDROID_KEYSTORE_BASE64` | Base64 of the upload `.jks` or `.keystore` |
 | `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
 | `ANDROID_KEY_ALIAS` | Key alias |
 | `ANDROID_KEY_PASSWORD` | Key password |
 
-The script writes the decoded keystore under `.keystore/`, which is gitignored. Artifacts signed with the debug keystore are for sideloading. Play Console needs the upload keystore secrets.
+Store them as Actions secrets. Do not put them in the repository, in a pull request, or in the workflow log. Pull-request jobs do not reference these secrets, so a pull request from this repository does not receive them. Fork pull requests cannot receive Actions secrets either.
+
+| Trigger | Android artifacts | Signing |
+| --- | --- | --- |
+| Pull request | `audionote-android-pr-debug-apk`, `audionote-android-pr-debug-aab` | Debug certificate. Do not submit it to a store. |
+| Push to `main` | `audionote-android-apk`, `audionote-android-aab` | Upload key required. The job fails before upload if certificate verification did not succeed. |
+| Tag `v*` | Same production artifacts, also attached to the GitHub Release | Upload key required. |
+| Manual `workflow_dispatch` | Same production artifacts | Upload key required. |
+
+Submit a production artifact from a green `main`, tag, or manual run to Myket. A Gradle `assembleRelease` success is not enough: the workflow uploads the APK only after the certificate stamp exists.
 
 ### iOS signing
 
-- No signing secrets: `xcodebuild archive` with `CODE_SIGNING_ALLOWED=NO`, then the `.app` is zipped into an unsigned `.ipa`.
-- `IOS_CERTIFICATE_P12_BASE64`, `IOS_CERTIFICATE_PASSWORD`, and `IOS_PROVISIONING_PROFILE_BASE64`: the script creates a temporary keychain, imports the certificate, installs the profile, archives with manual signing, and `xcodebuild -exportArchive`s a signed IPA. A profile that lists devices exports as `release-testing`. A distribution profile without devices exports as `app-store-connect`.
-- Optional `IOS_CODE_SIGN_IDENTITY` (default `Apple Distribution`) and `APPLE_TEAM_ID` (written into the native project at prebuild).
+- Pull requests do not receive iOS signing secrets. `scripts/build-ios.sh` archives with `CODE_SIGNING_ALLOWED=NO` and zips the `.app` into an unsigned `.ipa` named `audionote-ios-pr-ipa`.
+- Pushes to `main`, tags, and manual runs pass `IOS_CERTIFICATE_P12_BASE64`, `IOS_CERTIFICATE_PASSWORD`, and `IOS_PROVISIONING_PROFILE_BASE64` only to the build step. The script creates a temporary keychain, imports the certificate, installs the profile, archives with manual signing, and `xcodebuild -exportArchive`s a signed IPA. A profile that lists devices exports as `release-testing`. A distribution profile without devices exports as `app-store-connect`. The artifact name is `audionote-ios-ipa`.
+- Optional `IOS_CODE_SIGN_IDENTITY` (default `Apple Distribution`) and `APPLE_TEAM_ID` (written into the native project at prebuild). Without those secrets, a production iOS build is still unsigned.
 
 ## GitHub pipelines
 
 | Workflow | When | Runner | Output |
 | --- | --- | --- | --- |
-| `.github/workflows/ci.yml` | Pull requests and pushes to `main` | `ubuntu-24.04` | Unit tests, `tsc`, `expo install --check`, `expo export` for Android and iOS |
-| `.github/workflows/mobile-bundles.yml` | Pull requests, `main`, tags `v*`, manual | `ubuntu-24.04` and `macos-26` | `audionote-android-apk`, `audionote-android-aab`, `audionote-ios-ipa` |
+| `.github/workflows/ci.yml` | Pull requests and pushes to `main` | `ubuntu-24.04` | Unit tests, Android signing checks, `tsc`, `expo install --check`, `expo export` for Android and iOS |
+| `.github/workflows/mobile-bundles.yml` | Pull requests, `main`, tags `v*`, manual | `ubuntu-24.04` and `macos-26` | PR: `audionote-android-pr-debug-apk`, `audionote-android-pr-debug-aab`, `audionote-ios-pr-ipa`. Production (`main`, tags, manual): `audionote-android-apk`, `audionote-android-aab`, `audionote-ios-ipa` |
 | `.github/workflows/eas-build.yml` | Manual | `ubuntu-24.04` | EAS build queued for an `eas.json` profile. Requires `EXPO_TOKEN` |
 
 `macos-26` provides Xcode 26.4+, which Expo SDK 58 requires. Tag pushes that build both binaries publish them on a GitHub Release. Pull-request bundle jobs are cancelled when a newer commit arrives. Tag jobs are not cancelled.

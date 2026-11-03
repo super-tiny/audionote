@@ -92,7 +92,7 @@ bash scripts/build-ios.sh
 
 Artifact: `dist/ios/*.ipa`.
 
-Without signing secrets, Android release builds use the debug keystore (sideload only), and iOS output may be unsigned. Production signing is documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+A local build with no upload keystore is signed with the debug certificate for sideloading. Do not submit that APK to Myket, Play, or any other store. Production signing is documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 Native projects are generated with `expo prebuild`; `android/` and `ios/` are not committed.
 
@@ -103,7 +103,7 @@ Native projects are generated with `expo prebuild`; `android/` and `ios/` are no
 | Workflow | Purpose |
 | --- | --- |
 | **CI** | Unit tests, TypeScript check, JavaScript bundle export |
-| **Mobile bundles** | Release APK, AAB, and IPA artifacts; tags `v*` can publish a GitHub Release |
+| **Mobile bundles** | Pull requests upload debug Android artifacts (`audionote-android-pr-debug-apk`, `audionote-android-pr-debug-aab`) and an unsigned IPA. Pushes to `main`, tags `v*`, and manual runs require the Android upload key and publish `audionote-android-apk`, `audionote-android-aab`, and `audionote-ios-ipa`. Tags also publish a GitHub Release. |
 | **EAS bundle** | Manual workflow; requires `EXPO_TOKEN` and a linked Expo project |
 
 ---

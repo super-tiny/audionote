@@ -26,6 +26,15 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android signing checks
+        run: bash scripts/test-android-signing.sh
+
       - name: Install dependencies
         run: npm ci
 
