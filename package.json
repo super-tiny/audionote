@@ -48,5 +48,8 @@
     "prebuild:ios": "expo prebuild --platform ios --no-install",
     "build:android": "bash scripts/build-android.sh"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "react-dom": "19.3.0"
+  }
 }
