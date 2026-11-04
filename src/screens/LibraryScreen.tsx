@@ -112,7 +112,7 @@ export function LibraryScreen({
   function openItem(item: AudioItem): void {
     actionHaptic();
     onPlayerContext(item.id, item.title);
-    navigation.navigate('Player', { itemId: item.id });
+    navigation.navigate({ name: 'Player', params: { itemId: item.id }, merge: false });
   }
 
   async function onImport(): Promise<void> {
@@ -178,7 +178,7 @@ export function LibraryScreen({
             disabled: !playerItemId,
             onPress: () => {
               if (playerItemId) {
-                navigation.navigate('Player', { itemId: playerItemId });
+                navigation.navigate({ name: 'Player', params: { itemId: playerItemId }, merge: false });
               }
             },
           },
@@ -188,6 +188,12 @@ export function LibraryScreen({
             detail: formatHours(todayMs),
             disabled: true,
             onPress: () => undefined,
+          },
+          {
+            icon: 'albums-outline',
+            label: 'Listening history',
+            detail: 'Portions you have heard',
+            onPress: () => navigation.navigate({ name: 'ListenHistory', params: {}, merge: false }),
           },
           {
             icon: 'information-circle-outline',
@@ -356,7 +362,11 @@ export function LibraryScreen({
         <PlaybackDock
           variant="mini"
           title={playerTitle}
-          onOpen={() => navigation.navigate('Player', { itemId: playerItemId })}
+          onOpen={() => {
+            if (playerItemId) {
+              navigation.navigate({ name: 'Player', params: { itemId: playerItemId }, merge: false });
+            }
+          }}
         />
       ) : null}
       </View>
