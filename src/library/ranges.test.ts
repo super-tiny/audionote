@@ -7,7 +7,9 @@ import {
   listenedFraction,
   mergeRanges,
   nextListenRange,
+  playbackGapLimitMs,
   projectHeardRanges,
+  SEEK_GAP_MS,
 } from './ranges.ts';
 
 test('merges overlapping listened ranges and ignores empty ones', () => {
@@ -54,6 +56,26 @@ test('closes a range when playback pauses or seeks', () => {
   const pausedAcrossSeek = nextListenRange(extended.open, 'lesson', 40_000, false, 15);
   assert.equal(pausedAcrossSeek.open, null);
   assert.equal(pausedAcrossSeek.closed?.endMs, 3_000);
+});
+
+test('a long background stretch still counts when it matches the time that passed', () => {
+  const open = { itemId: 'lesson', startMs: 0, endMs: 5_000, sessionAt: 1 };
+  const limit = playbackGapLimitMs(60_000, 1);
+  assert.ok(limit > 60_000);
+  const continued = nextListenRange(open, 'lesson', 65_000, true, 2, limit);
+  assert.equal(continued.closed, null);
+  assert.equal(continued.open?.startMs, 0);
+  assert.equal(continued.open?.endMs, 65_000);
+
+  const paused = nextListenRange(open, 'lesson', 65_000, false, 3, limit);
+  assert.equal(paused.open, null);
+  assert.equal(paused.closed?.endMs, 65_000);
+
+  const seekLimit = playbackGapLimitMs(200, 1);
+  assert.equal(seekLimit, SEEK_GAP_MS);
+  const seek = nextListenRange(open, 'lesson', 65_000, true, 4, seekLimit);
+  assert.equal(seek.closed?.endMs, 5_000);
+  assert.equal(seek.open?.startMs, 65_000);
 });
 
 test('grows one listened interval while playback continues', () => {

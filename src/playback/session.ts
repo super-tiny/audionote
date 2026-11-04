@@ -3,7 +3,7 @@ import TrackPlayer, { Event, PlaybackState, PlayerCommand } from '@rntp/player';
 import { ensureDatabase } from '../db/open';
 import { writeSkips, readSkips } from './engine';
 import { cancelPausedJumpFlush, flushJumpHistoryIfStillPaused } from './jumpHistory';
-import { flushProgress, startProgressTicker } from './persist';
+import { flushProgress, recordSyncedProgress, startProgressTicker } from './persist';
 
 /**
  * Process-scoped playback setup. Registered from the entry file so lock-screen
@@ -15,6 +15,8 @@ export function registerPlaybackSession(): void {
     TrackPlayer.setupPlayer({
       contentType: 'speech',
       handleAudioBecomingNoisy: true,
+      // Native samples keep arriving while the app is minimized or the screen is locked.
+      progressSync: { intervalSeconds: 1 },
       android: {
         wakeMode: 'network',
         taskRemovedBehavior: 'continue',
@@ -51,6 +53,9 @@ export function registerPlaybackSession(): void {
       if (state === PlaybackState.Ended) {
         flushProgress({ ended: true });
       }
+    });
+    TrackPlayer.addEventListener(Event.PlaybackProgressUpdated, (event) => {
+      recordSyncedProgress(event);
     });
     startProgressTicker();
   });
