@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useIsPlaying, useProgress } from '@rntp/player';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
@@ -14,7 +15,8 @@ import {
 import type { AudioItem } from '../db/types';
 import { importAudioFiles, locateAudioFile, type ImportSummary } from '../library/import';
 import { refreshPresence } from '../library/files';
-import { coveredMs, listenedFraction } from '../library/ranges';
+import { coveredMs, listenedFraction, projectHeardRanges } from '../library/ranges';
+import { currentOpenListen, subscribeListenProgress } from '../playback/persist';
 import { formatClock, formatHours } from '../notes/capture';
 import type { RootStackParamList } from '../navigation/types';
 import { AppPressable } from '../ui/AppPressable';
@@ -84,6 +86,9 @@ export function LibraryScreen({
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const playing = useIsPlaying();
+  const progress = useProgress(playing ? 0.5 : 30);
+  const livePositionMs = progress.position * 1000;
 
   useEffect(() => {
     const handle = setTimeout(() => setApplied(query), 200);
@@ -97,6 +102,8 @@ export function LibraryScreen({
     setTodayMs(loaded.todayMs);
   }, [applied, revision]);
 
+  const libraryKey = rows.map((row) => `${row.item.id}:${row.item.uri}:${row.item.missing}`).join('|');
+
   useEffect(() => {
     let cancelled = false;
     void refreshPresence(rows.map((row) => row.item)).then((changed) => {
@@ -107,7 +114,38 @@ export function LibraryScreen({
     return () => {
       cancelled = true;
     };
-  }, [rows]);
+  }, [libraryKey]);
+
+  useEffect(() => {
+    return subscribeListenProgress((update) => {
+      setRows((current) => {
+        let changed = false;
+        const next = current.map((row) => {
+          if (row.item.id !== update.itemId) {
+            return row;
+          }
+          const heard = listenedFraction(rangesForItem(update.itemId), row.item.durationMs);
+          if (heard === row.heard) {
+            return row;
+          }
+          changed = true;
+          return { ...row, heard };
+        });
+        return changed ? next : current;
+      });
+      setTodayMs(coveredMs(rangesSince(startOfToday())));
+      setResume(continueListening());
+    });
+  }, []);
+
+  const todayLabelMs = useMemo(() => {
+    if (!playing) {
+      return todayMs;
+    }
+    const open = currentOpenListen();
+    const include = open && open.sessionAt >= startOfToday() ? open.range : null;
+    return coveredMs(projectHeardRanges(rangesSince(startOfToday()), include, livePositionMs, include != null));
+  }, [playing, livePositionMs, todayMs]);
 
   function openItem(item: AudioItem): void {
     actionHaptic();
@@ -149,7 +187,7 @@ export function LibraryScreen({
       <View style={styles.screen}>
       <ScreenHeader
         title="AudioNote"
-        subtitle={`Today · ${formatHours(todayMs)} listened`}
+        subtitle={`Today · ${formatHours(todayLabelMs)} listened`}
         onMenu={() => setMenuOpen(true)}
         actions={[
           {
@@ -185,7 +223,7 @@ export function LibraryScreen({
           {
             icon: 'time-outline',
             label: "Today's listening",
-            detail: formatHours(todayMs),
+            detail: formatHours(todayLabelMs),
             disabled: true,
             onPress: () => undefined,
           },
@@ -237,15 +275,18 @@ export function LibraryScreen({
               <View style={styles.resumeBlock}>
                 <Text style={styles.section}>Continue listening</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.resumeScroll}>
-                  {resume.map((item) => (
-                    <AppPressable key={item.id} haptic onPress={() => openItem(item)} style={styles.resumeCard}>
-                      <ArtworkAvatar title={item.title} size={36} />
-                      <Text numberOfLines={2} style={styles.resumeTitle}>
-                        {displayTitle(item.title)}
-                      </Text>
-                      <Text style={styles.meta}>Resume at {formatClock(item.positionMs)}</Text>
-                    </AppPressable>
-                  ))}
+                  {resume.map((item) => {
+                    const resumeMs = item.id === playerItemId ? livePositionMs : item.positionMs;
+                    return (
+                      <AppPressable key={item.id} haptic onPress={() => openItem(item)} style={styles.resumeCard}>
+                        <ArtworkAvatar title={item.title} size={36} />
+                        <Text numberOfLines={2} style={styles.resumeTitle}>
+                          {displayTitle(item.title)}
+                        </Text>
+                        <Text style={styles.meta}>Resume at {formatClock(resumeMs)}</Text>
+                      </AppPressable>
+                    );
+                  })}
                 </ScrollView>
               </View>
             ) : null}
@@ -269,9 +310,23 @@ export function LibraryScreen({
         }
         renderItem={({ item: row }) => {
           const { item, heard } = row;
-          const positionFraction =
-            item.durationMs && item.durationMs > 0 ? Math.min(1, item.positionMs / item.durationMs) : 0;
           const isActive = playerItemId === item.id;
+          const rowPositionMs = isActive ? livePositionMs : item.positionMs;
+          const positionFraction =
+            item.durationMs && item.durationMs > 0 ? Math.min(1, rowPositionMs / item.durationMs) : 0;
+          const open = isActive ? currentOpenListen() : null;
+          const heardFraction =
+            isActive && playing && item.durationMs
+              ? listenedFraction(
+                  projectHeardRanges(
+                    rangesForItem(item.id),
+                    open?.itemId === item.id ? open.range : null,
+                    livePositionMs,
+                    true,
+                  ),
+                  item.durationMs,
+                )
+              : heard;
           return (
             <View style={[styles.card, isActive && styles.cardActive, elevation.card]}>
               <AppPressable accessibilityRole="button" haptic onPress={() => openItem(item)} style={styles.cardMain}>
@@ -292,12 +347,12 @@ export function LibraryScreen({
                       <Text style={styles.formatPill}>{(item.format ?? 'audio').toUpperCase()}</Text>
                       <Text style={styles.meta}>
                         {item.durationMs ? formatClock(item.durationMs) : '—'}
-                        {item.durationMs ? ` · ${Math.round(heard * 100)}% heard` : ''}
+                        {item.durationMs ? ` · ${Math.round(heardFraction * 100)}% heard` : ''}
                       </Text>
                     </View>
-                    <Text style={styles.positionMeta}>Position · {formatClock(item.positionMs)}</Text>
+                    <Text style={styles.positionMeta}>Position · {formatClock(rowPositionMs)}</Text>
                     <View style={styles.track}>
-                      <View style={[styles.heard, { width: `${heard * 100}%` }]} />
+                      <View style={[styles.heard, { width: `${heardFraction * 100}%` }]} />
                       <View style={[styles.position, { left: `${positionFraction * 100}%` }]} />
                     </View>
                     {item.missing ? (
