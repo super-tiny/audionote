@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useCallback, useState } from 'react';
 
 import { LibraryScreen } from '../screens/LibraryScreen';
+import { ListenHistoryScreen } from '../screens/ListenHistoryScreen';
 import { PlayerScreen } from '../screens/PlayerScreen';
 import { flushJumpHistory } from '../playback/jumpHistory';
 import { flushProgress } from '../playback/persist';
@@ -53,6 +54,9 @@ export function RootNavigator() {
           {(props) => (
             <PlayerScreen {...props} playerItemId={playerItemId} playerTitle={playerTitle} onPlayerContext={onPlayerContext} />
           )}
+        </Stack.Screen>
+        <Stack.Screen name="ListenHistory">
+          {(props) => <ListenHistoryScreen {...props} onPlayerContext={onPlayerContext} />}
         </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>

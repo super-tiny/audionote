@@ -56,7 +56,7 @@ type PlayerScreenProps = NativeStackScreenProps<RootStackParamList, 'Player'> & 
 };
 
 export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScreenProps) {
-  const { itemId } = route.params;
+  const { itemId, seekMs, seekToken } = route.params;
   const playing = useIsPlaying();
   const progress = useProgress(0.25);
   const [item, setItem] = useState<AudioItem | null>(() => getItem(itemId));
@@ -99,6 +99,10 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           setItem(getItem(itemId));
           if (!opened) {
             setMessage('The file is missing. Locate it and the notes stay on this lesson.');
+            return;
+          }
+          if (seekToken != null && seekMs != null) {
+            seekToMs(seekMs);
           }
         })
         .catch((error: unknown) => {
@@ -111,7 +115,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
       cancelled = true;
       flushJumpHistory();
     };
-  }, [itemId]);
+  }, [itemId, seekMs, seekToken]);
 
   useEffect(() => {
     setJumps(listJumps(itemId));
@@ -253,6 +257,11 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           backLabel=""
           backIcon="chevron-down"
           actions={[
+            {
+              icon: 'time-outline',
+              label: 'Listening history',
+              onPress: () => navigation.navigate({ name: 'ListenHistory', params: { itemId }, merge: false }),
+            },
             {
               icon: 'options-outline',
               label: 'Playback settings',
