@@ -3,7 +3,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FlashList } from '@shopify/flash-list';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { TextInput } from 'react-native';
+import { ScrollView, Text, XStack, YStack } from 'tamagui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getItem, listListenHistory } from '../db/library';
@@ -123,40 +124,53 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
 
   return (
     <ScreenBackdrop>
-      <View style={styles.screen}>
+      <YStack style={{ flex: 1 }}>
         <ScreenHeader
           title={lesson ? displayTitle(lesson.title, 42) : 'Listening history'}
           subtitle={lesson ? 'Listening history' : 'Every recorded portion'}
           onBack={() => navigation.goBack()}
           backLabel="Back"
         />
-        <View style={styles.controls}>
+        <YStack style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm }}>
           {routeItemId ? (
-            <View style={styles.scopeRow}>
+            <XStack style={{ gap: spacing.sm }}>
               <ScopeChip label="This lesson" selected={scope === 'lesson'} onPress={() => setScope('lesson')} />
               <ScopeChip label="All lessons" selected={scope === 'all'} onPress={() => setScope('all')} />
-            </View>
+            </XStack>
           ) : null}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: 2 }}>
             {DURATION_FILTERS.map((entry) => {
               const selected = kind === entry.kind;
               return (
-                <Pressable
+                <AppPressable
                   key={entry.kind}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
                   accessibilityLabel={`${entry.label}. ${entry.hint}`}
                   onPress={() => setKind(entry.kind)}
-                  style={[styles.chip, selected && styles.chipOn]}
+                  style={{
+                    minHeight: 36,
+                    paddingHorizontal: 12,
+                    borderRadius: radii.pill,
+                    backgroundColor: selected ? colors.accent : colors.card,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 0.5,
+                    borderColor: selected ? colors.accent : colors.line,
+                  }}
                 >
-                  <Text style={[styles.chipText, selected && styles.chipTextOn]}>{entry.label}</Text>
-                </Pressable>
+                  <Text color={selected ? "background" : "text"} fontSize={14} fontWeight="700">
+                    {entry.label}
+                  </Text>
+                </AppPressable>
               );
             })}
           </ScrollView>
-          <Text style={[styles.hint, problem ? styles.problem : null]}>{problem ?? hint}</Text>
+          <Text color={problem ? "danger" : "muted"} fontSize={13} lineHeight={18}>
+            {problem ?? hint}
+          </Text>
           {kind === 'custom' ? (
-            <View style={styles.rangeRow}>
+            <XStack style={{ gap: spacing.sm }}>
               <TextInput
                 value={minText}
                 onChangeText={setMinText}
@@ -164,7 +178,15 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
                 placeholder="Min minutes"
                 placeholderTextColor={colors.muted}
                 accessibilityLabel="Minimum duration in minutes"
-                style={styles.rangeInput}
+                style={{
+                  flex: 1,
+                  minHeight: 44,
+                  borderRadius: radii.md,
+                  backgroundColor: colors.card,
+                  color: colors.text,
+                  paddingHorizontal: spacing.md,
+                  fontSize: 16,
+                }}
               />
               <TextInput
                 value={maxText}
@@ -173,17 +195,25 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
                 placeholder="Max minutes"
                 placeholderTextColor={colors.muted}
                 accessibilityLabel="Maximum duration in minutes"
-                style={styles.rangeInput}
+                style={{
+                  flex: 1,
+                  minHeight: 44,
+                  borderRadius: radii.md,
+                  backgroundColor: colors.card,
+                  color: colors.text,
+                  paddingHorizontal: spacing.md,
+                  fontSize: 16,
+                }}
               />
-            </View>
+            </XStack>
           ) : null}
-          <View style={styles.sortRow}>
+          <XStack style={{ gap: spacing.sm }}>
             {SORTS.map((entry) => {
               const selected = sortKey === entry.key;
               const arrow = direction === 'asc' ? 'arrow-up' : 'arrow-down';
               const directionLabel = direction === 'asc' ? 'ascending' : 'descending';
               return (
-                <Pressable
+                <AppPressable
                   key={entry.key}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
@@ -191,27 +221,38 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
                     selected ? `Sort by ${entry.label}, ${directionLabel}. Activate to reverse.` : `Sort by ${entry.label}`
                   }
                   onPress={() => chooseSort(entry.key)}
-                  style={[styles.sortButton, selected && styles.sortButtonOn]}
+                  style={{
+                    flex: 1,
+                    minHeight: 40,
+                    borderRadius: radii.md,
+                    backgroundColor: selected ? colors.accent : colors.card,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                  }}
                 >
-                  <Text style={[styles.sortText, selected && styles.sortTextOn]}>{entry.label}</Text>
+                  <Text color={selected ? 'background' : 'text'} fontSize={14} fontWeight="700">
+                    {entry.label}
+                  </Text>
                   {selected ? <Ionicons name={arrow} size={14} color={colors.background} /> : null}
-                </Pressable>
+                </AppPressable>
               );
             })}
-          </View>
-          <Text style={styles.summary}>
+          </XStack>
+          <Text color="muted" fontSize={13} fontVariant={['tabular-nums']}>
             {visible.length} {visible.length === 1 ? 'portion' : 'portions'}
             {visible.length ? ` · ${formatClock(totalMs)}` : ''}
           </Text>
-        </View>
+        </YStack>
         <FlashList
           data={visible}
           keyExtractor={(portion) => String(portion.id)}
-          style={styles.list}
+          style={{ flex: 1 }}
           contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.xl }}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
-            <Text style={styles.empty}>
+            <Text color="muted" fontSize={15} lineHeight={22} style={{ paddingTop: spacing.lg }}>
               {portions.length === 0
                 ? 'No portions recorded yet. They show up here after you listen.'
                 : 'No portions match this length.'}
@@ -221,21 +262,32 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
             <PortionRow portion={portion} showTitle={!lesson} onPress={() => openPortion(portion)} />
           )}
         />
-      </View>
+      </YStack>
     </ScreenBackdrop>
   );
 }
 
 function ScopeChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
   return (
-    <Pressable
+    <AppPressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
       onPress={onPress}
-      style={[styles.chip, selected && styles.chipOn]}
+      style={{
+        minHeight: 36,
+        paddingHorizontal: 12,
+        borderRadius: radii.pill,
+        backgroundColor: selected ? colors.accent : colors.card,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 0.5,
+        borderColor: selected ? colors.accent : colors.line,
+      }}
     >
-      <Text style={[styles.chipText, selected && styles.chipTextOn]}>{label}</Text>
-    </Pressable>
+      <Text color={selected ? "background" : "text"} fontSize={14} fontWeight="700">
+        {label}
+      </Text>
+    </AppPressable>
   );
 }
 
@@ -261,201 +313,60 @@ function PortionRow({
       accessibilityLabel={`${displayTitle(portion.title)}. ${bandLabel} portion from ${start} to ${end}, length ${length}. Play from the start.`}
       haptic
       onPress={onPress}
-      style={styles.card}
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: radii.lg,
+        padding: spacing.md,
+        marginBottom: spacing.md,
+        borderWidth: 0.5,
+        borderColor: colors.line,
+        gap: spacing.sm,
+      }}
     >
-      <View style={styles.cardTop}>
-        <Text style={[styles.badge, { color: BAND_COLOR[band] }]}>{bandLabel}</Text>
-        <Text style={styles.length}>{length}</Text>
-      </View>
+      <XStack style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text fontSize={12} fontWeight="800" letterSpacing={0.2} style={{ color: BAND_COLOR[band] }}>
+          {bandLabel}
+        </Text>
+        <Text color="text" fontSize={16} fontWeight="700" fontVariant={['tabular-nums']}>
+          {length}
+        </Text>
+      </XStack>
       {showTitle ? (
-        <Text numberOfLines={1} style={styles.cardTitle}>
+        <Text numberOfLines={1} color="text" fontSize={16} fontWeight="700">
           {displayTitle(portion.title)}
         </Text>
       ) : null}
-      <View style={styles.times}>
+      <XStack style={{ gap: spacing.md }}>
         <TimeStat label="Start" value={start} />
         <TimeStat label="End" value={end} />
         <TimeStat label="Length" value={length} />
-      </View>
-      <View style={styles.meterTrack}>
-        <View style={[styles.meterFill, { width: `${Math.max(meter * 100, 6)}%`, backgroundColor: BAND_COLOR[band] }]} />
-      </View>
-      <Text style={styles.when}>Heard {formatListenedAt(portion.sessionAt)}</Text>
+      </XStack>
+      <YStack style={{ height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden' }}>
+        <YStack
+          style={{
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: BAND_COLOR[band],
+            width: `${Math.max(meter * 100, 6)}%`,
+          }}
+        />
+      </YStack>
+      <Text color="muted" fontSize={12}>
+        Heard {formatListenedAt(portion.sessionAt)}
+      </Text>
     </AppPressable>
   );
 }
 
 function TimeStat({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.timeStat}>
-      <Text style={styles.timeLabel}>{label}</Text>
-      <Text style={styles.timeValue}>{value}</Text>
-    </View>
+    <YStack style={{ flex: 1, gap: 2 }}>
+      <Text color="muted" fontSize={11} fontWeight="700" textTransform="uppercase" letterSpacing={0.3}>
+        {label}
+      </Text>
+      <Text color="text" fontSize={15} fontVariant={['tabular-nums']} fontWeight="600">
+        {value}
+      </Text>
+    </YStack>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-  list: {
-    flex: 1,
-  },
-  controls: {
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    paddingBottom: spacing.sm,
-  },
-  scopeRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  filters: {
-    gap: spacing.sm,
-    paddingVertical: 2,
-  },
-  chip: {
-    minHeight: 36,
-    paddingHorizontal: 12,
-    borderRadius: radii.pill,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-  },
-  chipOn: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  chipText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  chipTextOn: {
-    color: colors.background,
-  },
-  hint: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  problem: {
-    color: colors.danger,
-  },
-  rangeRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  rangeInput: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: radii.md,
-    backgroundColor: colors.card,
-    color: colors.text,
-    paddingHorizontal: spacing.md,
-    fontSize: 16,
-  },
-  sortRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  sortButton: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: radii.md,
-    backgroundColor: colors.card,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  sortButtonOn: {
-    backgroundColor: colors.accent,
-  },
-  sortText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  sortTextOn: {
-    color: colors.background,
-  },
-  summary: {
-    color: colors.muted,
-    fontSize: 13,
-    fontVariant: ['tabular-nums'],
-  },
-  empty: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
-    paddingTop: spacing.lg,
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  badge: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  length: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  cardTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  times: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  timeStat: {
-    flex: 1,
-    gap: 2,
-  },
-  timeLabel: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  timeValue: {
-    color: colors.text,
-    fontSize: 15,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '600',
-  },
-  meterTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.line,
-    overflow: 'hidden',
-  },
-  meterFill: {
-    height: 6,
-    borderRadius: 3,
-  },
-  when: {
-    color: colors.muted,
-    fontSize: 12,
-  },
-});

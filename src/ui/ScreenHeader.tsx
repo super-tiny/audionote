@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, XStack, YStack } from 'tamagui';
 
+import { AppPressable } from './AppPressable';
 import { colors, spacing } from './theme';
 
 type HeaderAction = {
@@ -33,103 +34,86 @@ export function ScreenHeader({
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top + spacing.sm }]}>
-      <View style={styles.row}>
+    <YStack
+      backgroundColor="background"
+      style={{
+        paddingHorizontal: spacing.lg,
+        paddingBottom: spacing.sm,
+        gap: 4,
+        paddingTop: insets.top + spacing.sm,
+      }}
+    >
+      <XStack style={{ alignItems: 'center', justifyContent: 'space-between', minHeight: 40 }}>
         {onBack ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={backLabel} onPress={onBack} style={styles.back}>
+          <AppPressable
+            accessibilityRole="button"
+            accessibilityLabel={backLabel}
+            onPress={onBack}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginLeft: -6,
+              paddingRight: spacing.sm,
+              minHeight: 44,
+            }}
+          >
             <Ionicons name={backIcon} size={24} color={colors.accent} />
-            {backLabel ? <Text style={styles.backText}>{backLabel}</Text> : null}
-          </Pressable>
+            {backLabel ? (
+              <Text color="accent" fontSize={16} fontWeight="600">
+                {backLabel}
+              </Text>
+            ) : null}
+          </AppPressable>
         ) : onMenu ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Open menu" onPress={onMenu} style={styles.menu}>
+          <AppPressable
+            accessibilityRole="button"
+            accessibilityLabel="Open menu"
+            onPress={onMenu}
+            style={{
+              minWidth: 44,
+              minHeight: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: -8,
+            }}
+          >
             <Ionicons name="menu" size={26} color={colors.text} />
-          </Pressable>
+          </AppPressable>
         ) : (
-          <View style={styles.backPlaceholder} />
+          <YStack style={{ width: 1 }} />
         )}
-        <View style={styles.actions}>
+        <XStack style={{ alignItems: 'center', gap: 4 }}>
           {actions.map((action) => (
-            <Pressable
+            <AppPressable
               key={action.label}
               accessibilityRole="button"
               accessibilityLabel={action.label}
               disabled={action.disabled}
               onPress={action.onPress}
-              style={[styles.action, action.disabled && styles.actionDisabled]}
+              style={{
+                minWidth: 44,
+                minHeight: 44,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 22,
+                opacity: action.disabled ? 0.45 : 1,
+              }}
             >
               <Ionicons name={action.icon} size={22} color={colors.accent} />
-            </Pressable>
+            </AppPressable>
           ))}
-        </View>
-      </View>
+        </XStack>
+      </XStack>
       {title ? (
-        <Text style={styles.title} numberOfLines={2}>
+        <Text color="text" fontSize={28} fontWeight="700" style={{ letterSpacing: -0.3 }} numberOfLines={2}>
           {title}
         </Text>
       ) : null}
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-    </View>
+      {subtitle ? (
+        <Text color="muted" fontSize={15}>
+          {subtitle}
+        </Text>
+      ) : null}
+    </YStack>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-    gap: 4,
-    backgroundColor: colors.background,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 40,
-  },
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: -6,
-    paddingRight: spacing.sm,
-    minHeight: 44,
-  },
-  backText: {
-    color: colors.accent,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  backPlaceholder: {
-    width: 1,
-  },
-  menu: {
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -8,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  action: {
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 22,
-  },
-  actionDisabled: {
-    opacity: 0.45,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    color: colors.muted,
-    fontSize: 15,
-  },
-});

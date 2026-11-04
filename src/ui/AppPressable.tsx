@@ -1,32 +1,33 @@
-import { Pressable, type PressableProps, StyleSheet } from 'react-native';
+import { useState } from 'react';
+import type { StyleProp, ViewStyle } from 'react-native';
+import type { YStackProps } from 'tamagui';
+import { YStack } from 'tamagui';
 
 import { tapHaptic } from './haptics';
 
-type AppPressableProps = PressableProps & {
+type AppPressableProps = YStackProps & {
   haptic?: boolean;
 };
 
 export function AppPressable({ haptic = false, onPress, style, ...rest }: AppPressableProps) {
+  const [pressed, setPressed] = useState(false);
+
+  const pressedStyle: ViewStyle = pressed
+    ? { opacity: 0.82, transform: [{ scale: 0.98 }] }
+    : {};
+
   return (
-    <Pressable
+    <YStack
       {...rest}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       onPress={(event) => {
         if (haptic) {
           tapHaptic();
         }
         onPress?.(event);
       }}
-      style={(state) => {
-        const base = typeof style === 'function' ? style(state) : style;
-        return [base, state.pressed && styles.pressed];
-      }}
+      style={[style as StyleProp<ViewStyle>, pressedStyle]}
     />
   );
 }
-
-const styles = StyleSheet.create({
-  pressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.98 }],
-  },
-});

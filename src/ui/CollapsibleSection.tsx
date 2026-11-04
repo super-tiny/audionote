@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Text, YStack } from 'tamagui';
 
-import { colors, radii, spacing } from './theme';
+import { AppPressable } from './AppPressable';
+import { colors, spacing } from './theme';
 
 type CollapsibleSectionProps = {
   title: string;
@@ -20,55 +21,37 @@ export function CollapsibleSection({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <View style={styles.wrap}>
-      <Pressable
+    <YStack backgroundColor="card" style={{ borderRadius: 16, overflow: 'hidden' }}>
+      <AppPressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen((value) => !value)}
-        style={styles.header}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm + 2,
+          minHeight: 52,
+        }}
       >
-        <View style={styles.headerText}>
-          <Text style={styles.title}>{title}</Text>
-          {!open && summary ? <Text style={styles.summary}>{summary}</Text> : null}
-        </View>
+        <YStack style={{ flex: 1, gap: 2, paddingRight: spacing.sm }}>
+          <Text color="text" fontSize={16} fontWeight="600">
+            {title}
+          </Text>
+          {!open && summary ? (
+            <Text color="muted" fontSize={13}>
+              {summary}
+            </Text>
+          ) : null}
+        </YStack>
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={colors.muted} />
-      </Pressable>
-      {open ? <View style={styles.body}>{children}</View> : null}
-    </View>
+      </AppPressable>
+      {open ? (
+        <YStack style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.sm }}>
+          {children}
+        </YStack>
+      ) : null}
+    </YStack>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    minHeight: 52,
-  },
-  headerText: {
-    flex: 1,
-    gap: 2,
-    paddingRight: spacing.sm,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  summary: {
-    color: colors.muted,
-    fontSize: 13,
-  },
-  body: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
-  },
-});

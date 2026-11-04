@@ -1,9 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { AppState, StyleSheet } from 'react-native';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { TamaguiProvider, YStack } from 'tamagui';
 
+import { tamaguiConfig } from '../tamagui.config';
 import { RootNavigator } from './navigation/RootNavigator';
 import { flushJumpHistory } from './playback/jumpHistory';
 import { flushProgress } from './playback/persist';
@@ -20,17 +22,15 @@ export default function App() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <StatusBar style="light" />
-        <RootNavigator />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <YStack backgroundColor="background" style={{ flex: 1 }}>
+            <StatusBar style="light" />
+            <RootNavigator />
+          </YStack>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </TamaguiProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-});

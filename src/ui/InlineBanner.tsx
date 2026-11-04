@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { Text, XStack } from 'tamagui';
 
-import { colors, radii, spacing } from './theme';
+import { AppPressable } from './AppPressable';
+import { colors, spacing } from './theme';
 
 type InlineBannerProps = {
   message: string;
@@ -34,33 +36,29 @@ export function InlineBanner({ message, tone = 'info', onDismiss }: InlineBanner
   const palette = toneStyles[tone];
 
   return (
-    <View style={[styles.wrap, { backgroundColor: palette.background, borderColor: palette.border }]}>
+    <XStack
+      style={{
+        alignItems: 'center',
+        gap: spacing.sm,
+        marginHorizontal: spacing.lg,
+        marginBottom: spacing.sm,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+        borderRadius: 12,
+        borderWidth: StyleSheet.hairlineWidth,
+        backgroundColor: palette.background,
+        borderColor: palette.border,
+      }}
+    >
       <Ionicons name={palette.icon} size={18} color={palette.text} />
-      <Text style={[styles.text, { color: palette.text }]}>{message}</Text>
+      <Text color={palette.text} style={{ flex: 1, fontSize: 14, lineHeight: 20 }}>
+        {message}
+      </Text>
       {onDismiss ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss" onPress={onDismiss} hitSlop={8}>
+        <AppPressable accessibilityRole="button" accessibilityLabel="Dismiss" onPress={onDismiss} hitSlop={8}>
           <Ionicons name="close" size={18} color={palette.text} />
-        </Pressable>
+        </AppPressable>
       ) : null}
-    </View>
+    </XStack>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  text: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-});

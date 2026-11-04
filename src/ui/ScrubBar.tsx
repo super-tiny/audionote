@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import type { ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Text, YStack } from 'tamagui';
 
 import type { ListenRange } from '../library/ranges';
 import { formatClock } from '../notes/capture';
-import { colors } from './theme';
+import { colors, radii, spacing } from './theme';
 
 type Marker = {
   id: string;
@@ -20,9 +21,7 @@ type ScrubBarProps = {
   markers: readonly Marker[];
   onSeek: (positionMs: number, fromMs: number, source: ScrubSeekSource) => void;
   onScrub: (positionMs: number | null) => void;
-  /** Finger is down and moving. History stays in memory until release. */
   onScrubPreview?: (fromMs: number, toMs: number) => void;
-  /** The drag was cancelled and should not replace an earlier pending jump. */
   onScrubCancel?: () => void;
 };
 
@@ -118,23 +117,49 @@ export function ScrubBar({
 
   return (
     <GestureDetector gesture={gesture}>
-      <View
+      <YStack
         accessibilityRole="adjustable"
         accessibilityLabel="Playback position"
-        style={styles.wrap}
+        style={{ paddingTop: 28, paddingBottom: spacing.sm }}
         onLayout={(event) => {
           widthRef.current = Math.max(1, event.nativeEvent.layout.width);
         }}
       >
         {preview != null ? (
-          <Text style={[styles.bubble, { left: `${Math.min(92, Math.max(0, fraction * 100))}%` }]}>
+          <Text
+            color="background"
+            fontSize={13}
+            fontWeight="700"
+            style={
+              {
+                position: 'absolute',
+                top: 0,
+                left: `${Math.min(92, Math.max(0, fraction * 100))}%`,
+                backgroundColor: colors.accent,
+                overflow: 'hidden',
+                borderRadius: radii.sm,
+                paddingHorizontal: spacing.sm,
+                paddingVertical: 2,
+              } as ViewStyle
+            }
+          >
             {formatClock(preview)}
           </Text>
         ) : (
-          <View style={styles.bubbleSpacer} />
+          <YStack style={{ height: 22 }} />
         )}
-        <View style={styles.track}>
-          <View style={styles.line} />
+        <YStack style={{ height: 32, justifyContent: 'center' }}>
+          <YStack
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 13,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: colors.line,
+            }}
+          />
           {heard.map((range) => {
             if (durationMs <= 0) {
               return null;
@@ -142,86 +167,51 @@ export function ScrubBar({
             const start = (range.startMs / durationMs) * 100;
             const width = ((range.endMs - range.startMs) / durationMs) * 100;
             return (
-              <View
+              <YStack
                 key={`${range.startMs}-${range.endMs}`}
-                style={[styles.heard, { left: `${start}%`, width: `${Math.max(0.4, width)}%` }]}
+                backgroundColor="heard"
+                style={{
+                  position: 'absolute',
+                  top: 13,
+                  height: 8,
+                  borderRadius: 4,
+                  left: `${start}%`,
+                  width: `${Math.max(0.4, width)}%`,
+                }}
               />
             );
           })}
           {markers.map((marker) => (
-            <View
+            <YStack
               key={marker.id}
-              style={[
-                styles.marker,
-                { left: `${durationMs > 0 ? (marker.positionMs / durationMs) * 100 : 0}%` },
-              ]}
+              backgroundColor="accent"
+              style={{
+                position: 'absolute',
+                top: 8,
+                width: 3,
+                height: 18,
+                marginLeft: -1,
+                borderRadius: 2,
+                left: `${durationMs > 0 ? (marker.positionMs / durationMs) * 100 : 0}%`,
+              }}
             />
           ))}
-          <View style={[styles.thumb, { left: `${fraction * 100}%` }]} />
-        </View>
-      </View>
+          <YStack
+            style={{
+              position: 'absolute',
+              top: 8,
+              width: 20,
+              height: 20,
+              marginLeft: -10,
+              borderRadius: 10,
+              backgroundColor: colors.white,
+              borderWidth: 3,
+              borderColor: colors.accent,
+              left: `${fraction * 100}%`,
+            }}
+          />
+        </YStack>
+      </YStack>
     </GestureDetector>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    paddingTop: 28,
-    paddingBottom: 8,
-  },
-  bubbleSpacer: {
-    height: 22,
-  },
-  bubble: {
-    position: 'absolute',
-    top: 0,
-    color: colors.background,
-    backgroundColor: colors.accent,
-    overflow: 'hidden',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  track: {
-    height: 32,
-    justifyContent: 'center',
-  },
-  line: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 13,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.line,
-  },
-  heard: {
-    position: 'absolute',
-    top: 13,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.heard,
-  },
-  marker: {
-    position: 'absolute',
-    top: 8,
-    width: 3,
-    height: 18,
-    marginLeft: -1,
-    borderRadius: 2,
-    backgroundColor: colors.accent,
-  },
-  thumb: {
-    position: 'absolute',
-    top: 8,
-    width: 20,
-    height: 20,
-    marginLeft: -10,
-    borderRadius: 10,
-    backgroundColor: colors.white,
-    borderWidth: 3,
-    borderColor: colors.accent,
-  },
-});

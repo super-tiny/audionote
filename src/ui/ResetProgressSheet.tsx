@@ -1,8 +1,11 @@
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { ViewStyle } from 'react-native';
+import { Text, XStack, YStack } from 'tamagui';
 
+import { AppPressable } from './AppPressable';
 import { displayTitle } from './displayTitle';
-import { colors, radii, spacing } from './theme';
+import { colors, spacing } from './theme';
 
 type ResetProgressSheetProps = {
   visible: boolean;
@@ -17,95 +20,80 @@ export function ResetProgressSheet({ visible, title, onCancel, onConfirm }: Rese
 
   return (
     <Modal animationType="fade" transparent visible={visible} onRequestClose={onCancel}>
-      <View style={styles.fill}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Cancel reset" onPress={onCancel} style={styles.backdrop} />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
-          <Text style={styles.title}>Reset playback progress?</Text>
-          <Text style={styles.lesson}>{lesson}</Text>
-          <Text style={styles.body}>
+      <YStack style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <YStack
+          onPress={onCancel}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel reset"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.55)',
+          }}
+        />
+        <YStack
+          backgroundColor="cardRaised"
+          style={
+            {
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              paddingHorizontal: spacing.lg,
+              paddingTop: spacing.xl,
+              gap: spacing.sm,
+              paddingBottom: insets.bottom + spacing.lg,
+            } as ViewStyle
+          }
+        >
+          <Text color="text" fontSize={20} fontWeight="700">
+            Reset playback progress?
+          </Text>
+          <Text color="accent" fontSize={15} fontWeight="600">
+            {lesson}
+          </Text>
+          <Text color="muted" fontSize={15} style={{ lineHeight: 22 }}>
             Listened portions, resume position, and jump history go back to the start. The heard percentage returns to
             0%. Notes stay exactly as they are.
           </Text>
-          <View style={styles.actions}>
-            <Pressable accessibilityRole="button" onPress={onCancel} style={styles.cancel}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable
+          <XStack style={{ gap: spacing.sm, marginTop: spacing.md }}>
+            <AppPressable
+              accessibilityRole="button"
+              onPress={onCancel}
+              backgroundColor="card"
+              style={{
+                flex: 1,
+                minHeight: 48,
+                borderRadius: 12,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text color="text" fontSize={16} fontWeight="700">
+                Cancel
+              </Text>
+            </AppPressable>
+            <AppPressable
               accessibilityRole="button"
               accessibilityLabel={`Reset playback progress for ${lesson}. Notes stay.`}
               onPress={onConfirm}
-              style={styles.confirm}
+              backgroundColor="danger"
+              style={{
+                flex: 1,
+                minHeight: 48,
+                borderRadius: 12,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <Text style={styles.confirmText}>Reset progress</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
+              <Text color={colors.background} fontSize={16} fontWeight="700">
+                Reset progress
+              </Text>
+            </AppPressable>
+          </XStack>
+        </YStack>
+      </YStack>
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  fill: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-  },
-  sheet: {
-    backgroundColor: colors.cardRaised,
-    borderTopLeftRadius: radii.lg + 4,
-    borderTopRightRadius: radii.lg + 4,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    gap: spacing.sm,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  lesson: {
-    color: colors.accent,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  body: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  cancel: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: radii.md,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  confirm: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: radii.md,
-    backgroundColor: colors.danger,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  confirmText: {
-    color: colors.background,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-});

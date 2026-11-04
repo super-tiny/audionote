@@ -3,7 +3,8 @@ import { FlashList } from '@shopify/flash-list';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { useIsPlaying, useProgress } from '@rntp/player';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { TextInput } from 'react-native';
+import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import {
   continueListening,
@@ -187,7 +188,7 @@ export function LibraryScreen({
 
   return (
     <ScreenBackdrop>
-      <View style={styles.screen}>
+      <YStack style={{ flex: 1, backgroundColor: colors.background }}>
       <ScreenHeader
         title="AudioNote"
         subtitle={`Today · ${formatHours(todayLabelMs)} listened`}
@@ -245,77 +246,127 @@ export function LibraryScreen({
         ]}
       />
       <AboutSheet visible={aboutOpen} onClose={() => setAboutOpen(false)} />
-      <View style={styles.toolbar}>
-        <View style={styles.searchWrap}>
-          <Ionicons name="search" size={18} color={colors.muted} style={styles.searchIcon} />
+      <XStack style={{ alignItems: 'center', paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm }}>
+        <XStack
+          backgroundColor="card"
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            borderRadius: radii.md,
+            paddingHorizontal: spacing.md,
+            minHeight: 48,
+          }}
+        >
+          <Ionicons name="search" size={18} color={colors.muted} style={{ marginRight: spacing.sm }} />
           <TextInput
             value={query}
             onChangeText={setQuery}
             placeholder="Search titles"
             placeholderTextColor={colors.muted}
-            style={styles.search}
+            style={{ flex: 1, color: colors.text, fontSize: 16, paddingVertical: spacing.sm }}
             autoCorrect={false}
             autoCapitalize="none"
             clearButtonMode="while-editing"
           />
-        </View>
-        <Pressable
+        </XStack>
+        <AppPressable
           accessibilityRole="button"
           disabled={busy}
           onPress={() => void onImport()}
-          style={[styles.importChip, busy && styles.disabled]}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: colors.accent,
+            borderRadius: radii.md,
+            paddingHorizontal: spacing.md,
+            minHeight: 48,
+            opacity: busy ? 0.6 : 1,
+            gap: 6,
+          }}
         >
-          <Ionicons name="folder-open-outline" size={18} color={colors.background} />
-          <Text style={styles.importText}>{busy ? 'Working…' : 'Import'}</Text>
-        </Pressable>
-      </View>
+          <Ionicons name="folder-open-outline" size={18} color="background" />
+          <Text color={colors.background} fontSize={15} fontWeight="700">
+            {busy ? 'Working…' : 'Import'}
+          </Text>
+        </AppPressable>
+      </XStack>
       {status ? <InlineBanner message={status} tone="success" onDismiss={() => setStatus(null)} /> : null}
       <FlashList
         data={rows}
         keyExtractor={(row) => row.item.id}
-        style={styles.list}
-        contentContainerStyle={[
-          styles.listContent,
-          playerItemId ? styles.listContentWithDock : null,
-        ]}
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: spacing.lg,
+          paddingBottom: playerItemId ? 96 : spacing.md,
+        }}
         ListHeaderComponent={
           <>
             {resume.length ? (
-              <View style={styles.resumeBlock}>
-                <Text style={styles.section}>Continue listening</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.resumeScroll}>
+              <YStack style={{ marginBottom: spacing.lg, gap: spacing.sm }}>
+                <Text color="text" fontSize={17} fontWeight="600">
+                  Continue listening
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.sm }}
+                >
                   {resume.map((item) => {
                     const resumeMs = item.id === playerItemId ? livePositionMs : item.positionMs;
                     return (
-                      <AppPressable key={item.id} haptic onPress={() => openItem(item)} style={styles.resumeCard}>
+                      <AppPressable
+                        key={item.id}
+                        haptic
+                        onPress={() => openItem(item)}
+                        style={{
+                          width: 168,
+                          minHeight: 120,
+                          backgroundColor: colors.cardRaised,
+                          borderRadius: radii.lg,
+                          padding: spacing.md,
+                          marginRight: spacing.sm,
+                          gap: spacing.sm,
+                        }}
+                      >
                         <ArtworkAvatar title={item.title} size={36} />
-                        <Text numberOfLines={2} style={styles.resumeTitle}>
+                        <Text numberOfLines={2} color="text" fontSize={14} fontWeight="600" style={{ flex: 1 }}>
                           {displayTitle(item.title)}
                         </Text>
-                        <Text style={styles.meta}>Resume at {formatClock(resumeMs)}</Text>
+                        <Text color="muted" fontSize={13}>
+                          Resume at {formatClock(resumeMs)}
+                        </Text>
                       </AppPressable>
                     );
                   })}
                 </ScrollView>
-              </View>
+              </YStack>
             ) : null}
             {rows.length ? (
-              <Text style={styles.listHeading}>
+              <Text
+                color="muted"
+                fontSize={13}
+                fontWeight="600"
+                letterSpacing={0.3}
+                textTransform="uppercase"
+                style={{ marginBottom: spacing.sm }}
+              >
                 All lessons · {rows.length}
               </Text>
             ) : null}
           </>
         }
         ListEmptyComponent={
-          <View style={styles.emptyWrap}>
+          <YStack style={{ alignItems: 'center', paddingTop: spacing.xxl, paddingHorizontal: spacing.lg, gap: spacing.sm }}>
             <Ionicons name="musical-notes-outline" size={40} color={colors.line} />
-            <Text style={styles.emptyTitle}>{applied.trim() ? 'No matches' : 'Your library is empty'}</Text>
-            <Text style={styles.empty}>
+            <Text color="text" fontSize={18} fontWeight="600">
+              {applied.trim() ? 'No matches' : 'Your library is empty'}
+            </Text>
+            <Text color="muted" fontSize={15} lineHeight={22} style={{ textAlign: 'center' }}>
               {applied.trim()
                 ? 'Try a different search term.'
                 : 'Import a lesson. Files stay where they are, and notes stay with each entry.'}
             </Text>
-          </View>
+          </YStack>
         }
         renderItem={({ item: row }) => {
           const { item, heard } = row;
@@ -337,65 +388,138 @@ export function LibraryScreen({
                 )
               : heard;
           return (
-            <View style={[styles.card, isActive && styles.cardActive, elevation.card]}>
-              <AppPressable accessibilityRole="button" haptic onPress={() => openItem(item)} style={styles.cardMain}>
-                <View style={styles.cardRow}>
+            <YStack
+              style={{
+                backgroundColor: isActive ? '#1A2838' : colors.card,
+                borderRadius: radii.lg,
+                marginBottom: spacing.md,
+                padding: spacing.md,
+                borderWidth: 0.5,
+                borderColor: isActive ? colors.accent : colors.line,
+                gap: spacing.sm,
+                ...elevation.card,
+              }}
+            >
+              <AppPressable accessibilityRole="button" haptic onPress={() => openItem(item)} style={{ gap: spacing.sm }}>
+                <XStack style={{ alignItems: 'flex-start', gap: spacing.md }}>
                   <ArtworkAvatar title={item.title} size={52} />
-                  <View style={styles.cardBody}>
-                    <View style={styles.titleRow}>
-                      <Text numberOfLines={2} style={styles.cardTitle}>
+                  <YStack style={{ flex: 1, gap: 4 }}>
+                    <XStack style={{ alignItems: 'flex-start', gap: spacing.sm }}>
+                      <Text numberOfLines={2} color="text" fontSize={17} fontWeight="600" lineHeight={22} style={{ flex: 1 }}>
                         {displayTitle(item.title)}
                       </Text>
                       {isActive ? (
-                        <View style={styles.nowBadge}>
-                          <Text style={styles.nowBadgeText}>Playing</Text>
-                        </View>
+                        <YStack
+                          backgroundColor="accentSoft"
+                          style={{ borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2, marginTop: 2 }}
+                        >
+                          <Text color="accent" fontSize={11} fontWeight="700">
+                            Playing
+                          </Text>
+                        </YStack>
                       ) : null}
-                    </View>
-                    <View style={styles.metaRow}>
-                      <Text style={styles.formatPill}>{(item.format ?? 'audio').toUpperCase()}</Text>
-                      <Text style={styles.meta}>
+                    </XStack>
+                    <XStack style={{ alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                      <YStack
+                        backgroundColor="accentSoft"
+                        style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: radii.pill, overflow: 'hidden' }}
+                      >
+                        <Text color="accent" fontSize={11} fontWeight="700">
+                          {(item.format ?? 'audio').toUpperCase()}
+                        </Text>
+                      </YStack>
+                      <Text color="muted" fontSize={13}>
                         {item.durationMs ? formatClock(item.durationMs) : '—'}
                         {item.durationMs ? ` · ${Math.round(heardFraction * 100)}% heard` : ''}
                       </Text>
-                    </View>
-                    <Text style={styles.positionMeta}>Position · {formatClock(rowPositionMs)}</Text>
-                    <View style={styles.track}>
-                      <View style={[styles.heard, { width: `${heardFraction * 100}%` }]} />
-                      <View style={[styles.position, { left: `${positionFraction * 100}%` }]} />
-                    </View>
+                    </XStack>
+                    <Text color="muted" fontSize={12} fontVariant={['tabular-nums']}>
+                      Position · {formatClock(rowPositionMs)}
+                    </Text>
+                    <YStack
+                      style={{
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: colors.line,
+                        overflow: 'hidden',
+                        marginTop: 4,
+                      }}
+                    >
+                      <YStack backgroundColor="heard" style={{ height: 6, width: `${heardFraction * 100}%` }} />
+                      <YStack
+                        style={{
+                          position: 'absolute',
+                          width: 2,
+                          height: 6,
+                          backgroundColor: colors.white,
+                          left: `${positionFraction * 100}%`,
+                        }}
+                      />
+                    </YStack>
                     {item.missing ? (
-                      <View style={styles.missingRow}>
+                      <XStack style={{ alignItems: 'center', marginTop: 2, gap: 4 }}>
                         <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
-                        <Text style={styles.missing}>File missing</Text>
-                      </View>
+                        <Text color="danger" fontSize={13} fontWeight="600">
+                          File missing
+                        </Text>
+                      </XStack>
                     ) : null}
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.muted} style={styles.chevron} />
-                </View>
+                  </YStack>
+                  <YStack style={{ marginTop: 14 }}>
+                    <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+                  </YStack>
+                </XStack>
               </AppPressable>
-              <View style={styles.actions}>
+              <XStack
+                style={{
+                  flexWrap: 'wrap',
+                  paddingTop: spacing.sm,
+                  gap: spacing.sm,
+                  borderTopWidth: 0.5,
+                  borderTopColor: colors.line,
+                }}
+              >
                 {item.missing ? (
-                  <Pressable
+                  <AppPressable
                     accessibilityRole="button"
                     disabled={busy}
                     onPress={() => void onLocate(item.id)}
-                    style={styles.actionBtn}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: spacing.sm,
+                      minHeight: 36,
+                      borderRadius: radii.sm,
+                      backgroundColor: colors.surface,
+                      gap: 6,
+                    }}
                   >
                     <Ionicons name="locate-outline" size={16} color={colors.accent} />
-                    <Text style={styles.actionText}>Locate</Text>
-                  </Pressable>
+                    <Text color="muted" fontSize={14} fontWeight="600">
+                      Locate
+                    </Text>
+                  </AppPressable>
                 ) : null}
-                <Pressable
+                <AppPressable
                   accessibilityRole="button"
                   accessibilityLabel={`Reset playback progress for ${displayTitle(item.title)}`}
                   onPress={() => setResetTarget(item)}
-                  style={styles.actionBtn}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: spacing.sm,
+                    minHeight: 36,
+                    borderRadius: radii.sm,
+                    backgroundColor: colors.surface,
+                    gap: 6,
+                  }}
                 >
                   <Ionicons name="refresh-outline" size={16} color={colors.muted} />
-                  <Text style={styles.actionText}>Reset</Text>
-                </Pressable>
-                <Pressable
+                  <Text color="muted" fontSize={14} fontWeight="600">
+                    Reset
+                  </Text>
+                </AppPressable>
+                <AppPressable
                   accessibilityRole="button"
                   onPress={() => {
                     if (pendingDeleteId === item.id) {
@@ -409,19 +533,31 @@ export function LibraryScreen({
                       setPendingDeleteId(item.id);
                     }
                   }}
-                  style={[styles.actionBtn, pendingDeleteId === item.id && styles.actionBtnDanger]}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: spacing.sm,
+                    minHeight: 36,
+                    borderRadius: radii.sm,
+                    backgroundColor: pendingDeleteId === item.id ? 'rgba(240, 164, 164, 0.12)' : colors.surface,
+                    gap: 6,
+                  }}
                 >
                   <Ionicons
                     name={pendingDeleteId === item.id ? 'warning-outline' : 'trash-outline'}
                     size={16}
                     color={pendingDeleteId === item.id ? colors.danger : colors.muted}
                   />
-                  <Text style={[styles.actionText, pendingDeleteId === item.id && styles.dangerText]}>
+                  <Text
+                    color={pendingDeleteId === item.id ? "danger" : "muted"}
+                    fontSize={14}
+                    fontWeight="600"
+                  >
                     {pendingDeleteId === item.id ? 'Confirm' : 'Delete'}
                   </Text>
-                </Pressable>
-              </View>
-            </View>
+                </AppPressable>
+              </XStack>
+            </YStack>
           );
         }}
       />
@@ -449,252 +585,7 @@ export function LibraryScreen({
           }}
         />
       ) : null}
-      </View>
+      </YStack>
     </ScreenBackdrop>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  searchWrap: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    minHeight: 48,
-  },
-  searchIcon: {
-    marginRight: spacing.sm,
-  },
-  search: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 16,
-    paddingVertical: spacing.sm,
-  },
-  importChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.accent,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    minHeight: 48,
-  },
-  disabled: {
-    opacity: 0.6,
-  },
-  importText: {
-    color: colors.background,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  listHeading: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-    marginBottom: spacing.sm,
-  },
-  list: {
-    flex: 1,
-  },
-  listContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  listContentWithDock: {
-    paddingBottom: 96,
-  },
-  resumeBlock: {
-    marginBottom: spacing.lg,
-    gap: spacing.sm,
-  },
-  section: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  resumeScroll: {
-    gap: spacing.sm,
-    paddingRight: spacing.sm,
-  },
-  resumeCard: {
-    width: 168,
-    minHeight: 120,
-    backgroundColor: colors.cardRaised,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    gap: spacing.sm,
-    marginRight: spacing.sm,
-  },
-  resumeTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-    flex: 1,
-  },
-  emptyWrap: {
-    alignItems: 'center',
-    paddingTop: spacing.xxl,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  empty: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    gap: spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-  },
-  cardActive: {
-    borderColor: colors.accent,
-    backgroundColor: '#1A2838',
-  },
-  cardMain: {
-    gap: spacing.sm,
-  },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  cardBody: {
-    flex: 1,
-    gap: 4,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  nowBadge: {
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.pill,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 2,
-  },
-  nowBadgeText: {
-    color: colors.accent,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  formatPill: {
-    color: colors.accent,
-    fontSize: 11,
-    fontWeight: '700',
-    backgroundColor: colors.accentSoft,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radii.pill,
-    overflow: 'hidden',
-  },
-  cardTitle: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '600',
-    lineHeight: 22,
-  },
-  meta: {
-    color: colors.muted,
-    fontSize: 13,
-  },
-  positionMeta: {
-    color: colors.muted,
-    fontSize: 12,
-    fontVariant: ['tabular-nums'],
-  },
-  track: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.line,
-    overflow: 'hidden',
-    marginTop: 4,
-  },
-  heard: {
-    height: 6,
-    backgroundColor: colors.heard,
-  },
-  position: {
-    position: 'absolute',
-    width: 2,
-    height: 6,
-    backgroundColor: colors.white,
-  },
-  missingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  missing: {
-    color: colors.danger,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  chevron: {
-    marginTop: 14,
-  },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.line,
-    paddingTop: spacing.sm,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.sm,
-    minHeight: 36,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surface,
-  },
-  actionBtnDanger: {
-    backgroundColor: 'rgba(240, 164, 164, 0.12)',
-  },
-  actionText: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  dangerText: {
-    color: colors.danger,
-  },
-});

@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Modal } from 'react-native';
+import type { ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import { githubUrls } from '../constants/github';
 import { AppPressable } from './AppPressable';
@@ -35,13 +37,25 @@ function LinkRow({
       accessibilityRole="link"
       haptic
       onPress={() => void openUrl(url)}
-      style={styles.linkRow}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.md,
+        minHeight: 56,
+        paddingHorizontal: spacing.md,
+        borderRadius: radii.md,
+        backgroundColor: colors.surface,
+      }}
     >
       <Ionicons name={icon} size={22} color={colors.accent} />
-      <View style={styles.linkText}>
-        <Text style={styles.linkLabel}>{label}</Text>
-        <Text style={styles.linkDetail}>{detail}</Text>
-      </View>
+      <YStack style={{ flex: 1, gap: 2 }}>
+        <Text color="text" fontSize={16} fontWeight="600">
+          {label}
+        </Text>
+        <Text color="muted" fontSize={13} lineHeight={18}>
+          {detail}
+        </Text>
+      </YStack>
       <Ionicons name="open-outline" size={18} color={colors.muted} />
     </AppPressable>
   );
@@ -53,154 +67,100 @@ export function AboutSheet({ visible, onClose }: AboutSheetProps) {
 
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close about" />
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-        <View style={styles.handle} />
-        <Text style={styles.title}>About AudioNote</Text>
-        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={styles.lead}>
-            AudioNote helps you listen through long local lessons, return to the last point you played, see how much you have actually heard, step back through jump history, and capture timestamped notes—all on your device.
+      <YStack style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <YStack
+          onPress={onClose}
+          accessibilityLabel="Close about"
+          style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.55)' }}
+        />
+        <YStack
+          backgroundColor="cardRaised"
+          style={
+            {
+              borderTopLeftRadius: radii.lg + 4,
+              borderTopRightRadius: radii.lg + 4,
+              paddingHorizontal: spacing.lg,
+              paddingTop: spacing.sm,
+              maxHeight: '85%',
+              paddingBottom: Math.max(insets.bottom, spacing.lg),
+            } as ViewStyle
+          }
+        >
+          <YStack
+            style={{
+              alignSelf: 'center',
+              width: 40,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: colors.line,
+              marginBottom: spacing.md,
+            }}
+          />
+          <Text color="text" fontSize={20} fontWeight="700" style={{ marginBottom: spacing.md }}>
+            About AudioNote
           </Text>
-          <Text style={styles.version}>Version {version}</Text>
-          <Text style={styles.sectionTitle}>Open source on GitHub</Text>
-          <Text style={styles.body}>
-            AudioNote is developed in the open. We welcome contributions, bug reports, and ideas for what to build next.
-          </Text>
-          <View style={styles.links}>
-            <LinkRow
-              icon="logo-github"
-              label="View repository"
-              detail={githubUrls.repository.replace('https://', '')}
-              url={githubUrls.repository}
-            />
-            <LinkRow
-              icon="git-pull-request-outline"
-              label="Contribute"
-              detail="Pull requests and improvements welcome"
-              url={githubUrls.contributing}
-            />
-            <LinkRow
-              icon="bug-outline"
-              label="Report an issue"
-              detail="Something broken? Tell us on GitHub"
-              url={githubUrls.newIssue}
-            />
-            <LinkRow
-              icon="bulb-outline"
-              label="Request a feature"
-              detail="Share what would make AudioNote better for you"
-              url={githubUrls.newFeature}
-            />
-          </View>
-          <Text style={styles.footer}>
-            Thank you for using AudioNote and for helping improve it for everyone who learns from long-form audio.
-          </Text>
-        </ScrollView>
-        <AppPressable accessibilityRole="button" haptic onPress={onClose} style={styles.closeBtn}>
-          <Text style={styles.closeBtnText}>Close</Text>
-        </AppPressable>
-      </View>
+          <ScrollView style={{ flexGrow: 0 }} showsVerticalScrollIndicator={false}>
+            <Text color="text" fontSize={16} lineHeight={24} style={{ marginBottom: spacing.sm }}>
+              AudioNote helps you listen through long local lessons, return to the last point you played, see how much you have actually heard, step back through jump history, and capture timestamped notes—all on your device.
+            </Text>
+            <Text color="muted" fontSize={14} style={{ marginBottom: spacing.lg }}>
+              Version {version}
+            </Text>
+            <Text color="text" fontSize={16} fontWeight="700" style={{ marginBottom: spacing.sm }}>
+              Open source on GitHub
+            </Text>
+            <Text color="muted" fontSize={15} lineHeight={22} style={{ marginBottom: spacing.md }}>
+              AudioNote is developed in the open. We welcome contributions, bug reports, and ideas for what to build next.
+            </Text>
+            <YStack style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
+              <LinkRow
+                icon="logo-github"
+                label="View repository"
+                detail={githubUrls.repository.replace('https://', '')}
+                url={githubUrls.repository}
+              />
+              <LinkRow
+                icon="git-pull-request-outline"
+                label="Contribute"
+                detail="Pull requests and improvements welcome"
+                url={githubUrls.contributing}
+              />
+              <LinkRow
+                icon="bug-outline"
+                label="Report an issue"
+                detail="Something broken? Tell us on GitHub"
+                url={githubUrls.newIssue}
+              />
+              <LinkRow
+                icon="bulb-outline"
+                label="Request a feature"
+                detail="Share what would make AudioNote better for you"
+                url={githubUrls.newFeature}
+              />
+            </YStack>
+            <Text color="muted" fontSize={14} lineHeight={21} style={{ marginBottom: spacing.md }}>
+              Thank you for using AudioNote and for helping improve it for everyone who learns from long-form audio.
+            </Text>
+          </ScrollView>
+          <AppPressable
+            accessibilityRole="button"
+            haptic
+            onPress={onClose}
+            style={{
+              minHeight: 48,
+              borderRadius: radii.md,
+              backgroundColor: colors.card,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginTop: spacing.sm,
+            }}
+          >
+            <Text color="accent" fontSize={16} fontWeight="700">
+              Close
+            </Text>
+          </AppPressable>
+        </YStack>
+      </YStack>
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-  },
-  sheet: {
-    backgroundColor: colors.cardRaised,
-    borderTopLeftRadius: radii.lg + 4,
-    borderTopRightRadius: radii.lg + 4,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    maxHeight: '85%',
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.line,
-    marginBottom: spacing.md,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: spacing.md,
-  },
-  scroll: {
-    flexGrow: 0,
-  },
-  lead: {
-    color: colors.text,
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: spacing.sm,
-  },
-  version: {
-    color: colors.muted,
-    fontSize: 14,
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: spacing.sm,
-  },
-  body: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: spacing.md,
-  },
-  links: {
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  linkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 56,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-  },
-  linkText: {
-    flex: 1,
-    gap: 2,
-  },
-  linkLabel: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  linkDetail: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  footer: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 21,
-    marginBottom: spacing.md,
-  },
-  closeBtn: {
-    minHeight: 48,
-    borderRadius: radii.md,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-  },
-  closeBtnText: {
-    color: colors.accent,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-});

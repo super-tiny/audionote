@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useIsPlaying, useProgress } from '@rntp/player';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, XStack, YStack } from 'tamagui';
 
 import type { ListenRange } from '../library/ranges';
 import { formatClock } from '../notes/capture';
@@ -11,18 +11,15 @@ import { ArtworkAvatar } from './ArtworkAvatar';
 import { ScrubBar, type ScrubSeekSource } from './ScrubBar';
 import { displayTitle } from './displayTitle';
 import { actionHaptic } from './haptics';
-import { colors, elevation, radii, spacing } from './theme';
+import { colors, elevation, spacing } from './theme';
 
 type Marker = { id: string; positionMs: number };
 
-type PlaybackDockBase = {
+type PlaybackDockFullProps = {
+  variant: 'full';
   title: string;
   durationMs: number;
   positionMs: number;
-};
-
-type PlaybackDockFullProps = PlaybackDockBase & {
-  variant: 'full';
   heard: readonly ListenRange[];
   markers: readonly Marker[];
   scrubMs: number | null;
@@ -68,36 +65,85 @@ export function PlaybackDock(props: PlaybackDockProps) {
 
   if (props.variant === 'mini') {
     return (
-      <View style={[styles.miniWrap, elevation.card, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-        <Pressable accessibilityRole="button" onPress={props.onOpen} style={styles.miniMain}>
+      <XStack
+        style={{
+          alignItems: 'center',
+          borderTopWidth: 0.5,
+          borderTopColor: colors.line,
+          backgroundColor: '#1A2E28',
+          paddingTop: spacing.sm,
+          paddingHorizontal: spacing.md,
+          paddingBottom: Math.max(insets.bottom, spacing.sm),
+          gap: spacing.sm,
+          ...elevation.card,
+        }}
+      >
+        <AppPressable
+          accessibilityRole="button"
+          onPress={props.onOpen}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 56 }}
+        >
           <ArtworkAvatar title={props.title} size={44} />
-          <View style={styles.miniMeta}>
-            <Text numberOfLines={1} style={styles.miniTitle}>
+          <YStack style={{ flex: 1, gap: 2 }}>
+            <Text numberOfLines={1} color="text" fontSize={15} fontWeight="700">
               {displayTitle(props.title, 40)}
             </Text>
-            <Text style={styles.miniTime}>
+            <Text color="muted" fontSize={12} fontVariant={['tabular-nums']}>
               {formatClock(miniPositionMs)}
               {miniDurationMs ? ` / ${formatClock(miniDurationMs)}` : ''}
             </Text>
-          </View>
-        </Pressable>
-        <View style={styles.miniControls}>
-          <AppPressable accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`} haptic onPress={onSkipBack} style={styles.controlBtn}>
+          </YStack>
+        </AppPressable>
+        <XStack style={{ alignItems: 'center', gap: spacing.sm }}>
+          <AppPressable
+            accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`}
+            haptic
+            onPress={onSkipBack}
+            style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+          >
             <Ionicons name="play-back" size={26} color={colors.text} />
           </AppPressable>
-          <AppPressable accessibilityLabel={playing ? 'Pause' : 'Play'} haptic onPress={onPlayPause} style={styles.playBtn}>
+          <AppPressable
+            accessibilityLabel={playing ? 'Pause' : 'Play'}
+            haptic
+            onPress={onPlayPause}
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 23,
+              backgroundColor: colors.accent,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
             <Ionicons name={playing ? 'pause' : 'play'} size={26} color={colors.background} />
           </AppPressable>
-          <AppPressable accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`} haptic onPress={onSkipForward} style={styles.controlBtn}>
+          <AppPressable
+            accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`}
+            haptic
+            onPress={onSkipForward}
+            style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+          >
             <Ionicons name="play-forward" size={26} color={colors.text} />
           </AppPressable>
-        </View>
-      </View>
+        </XStack>
+      </XStack>
     );
   }
 
   return (
-    <View style={[styles.fullWrap, elevation.card, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+    <YStack
+      backgroundColor="surface"
+      style={{
+        borderTopWidth: 0.5,
+        borderTopColor: colors.line,
+        paddingTop: spacing.sm,
+        paddingHorizontal: spacing.lg,
+        paddingBottom: Math.max(insets.bottom, spacing.sm),
+        gap: spacing.xs,
+        ...elevation.card,
+      }}
+    >
       <ScrubBar
         durationMs={props.durationMs}
         positionMs={props.scrubMs ?? props.positionMs}
@@ -108,168 +154,90 @@ export function PlaybackDock(props: PlaybackDockProps) {
         onScrubPreview={props.onScrubPreview}
         onScrubCancel={props.onScrubCancel}
       />
-      <View style={styles.times}>
-        <Text style={styles.time}>{formatClock(props.scrubMs ?? props.positionMs)}</Text>
+      <XStack style={{ alignItems: 'center', justifyContent: 'space-between', marginTop: -4 }}>
+        <Text color="muted" fontSize={12} fontVariant={['tabular-nums']} fontWeight="600">
+          {formatClock(props.scrubMs ?? props.positionMs)}
+        </Text>
         {props.onOpenJumps ? (
-          <Pressable
+          <AppPressable
             accessibilityRole="button"
             accessibilityLabel={props.jumpsCount ? `Jumps, ${props.jumpsCount}` : 'Jumps'}
             accessibilityHint="Opens positions you can return to"
             onPress={props.onOpenJumps}
-            style={styles.jumpsButton}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              minHeight: 32,
+              paddingHorizontal: spacing.sm,
+            }}
           >
-            <Ionicons name="time-outline" size={15} color={props.jumpsCount ? colors.accent : colors.muted} />
-            <Text style={[styles.jumpsLabel, props.jumpsCount ? styles.jumpsLabelOn : null]}>
+            <Ionicons
+              name="time-outline"
+              size={15}
+              color={props.jumpsCount ? colors.accent : colors.muted}
+            />
+            <Text color={props.jumpsCount ? 'accent' : 'muted'} fontSize={12} fontWeight="700">
               Jumps{props.jumpsCount ? ` ${props.jumpsCount}` : ''}
             </Text>
-          </Pressable>
+          </AppPressable>
         ) : null}
-        <Text style={styles.time}>{props.durationMs ? formatClock(props.durationMs) : '—'}</Text>
-      </View>
-      <View style={styles.fullControls}>
-        <View style={styles.fullControlsSides}>
-          <AppPressable accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`} haptic onPress={onSkipBack} style={styles.controlBtn}>
+        <Text color="muted" fontSize={12} fontVariant={['tabular-nums']} fontWeight="600">
+          {props.durationMs ? formatClock(props.durationMs) : '—'}
+        </Text>
+      </XStack>
+      <YStack style={{ position: 'relative', minHeight: 72, justifyContent: 'center', paddingVertical: spacing.sm }}>
+        <XStack style={{ alignItems: 'center', justifyContent: 'space-between', zIndex: 1 }}>
+          <AppPressable
+            accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`}
+            haptic
+            onPress={onSkipBack}
+            style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+          >
             <Ionicons name="play-back" size={30} color={colors.text} />
           </AppPressable>
-          <View style={styles.fullControlsRight}>
-            <AppPressable accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`} haptic onPress={onSkipForward} style={styles.controlBtn}>
+          <XStack style={{ alignItems: 'center', gap: spacing.xs }}>
+            <AppPressable
+              accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`}
+              haptic
+              onPress={onSkipForward}
+              style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+            >
               <Ionicons name="play-forward" size={30} color={colors.text} />
             </AppPressable>
-            <AppPressable accessibilityLabel="Playback settings" haptic onPress={props.onOpenSettings} style={styles.settingsBtn}>
+            <AppPressable
+              accessibilityLabel="Playback settings"
+              haptic
+              onPress={props.onOpenSettings}
+              style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+            >
               <Ionicons name="settings-outline" size={24} color={colors.text} />
             </AppPressable>
-          </View>
-        </View>
-        <AppPressable accessibilityLabel={playing ? 'Pause' : 'Play'} haptic onPress={onPlayPause} style={styles.playBtnLarge}>
+          </XStack>
+        </XStack>
+        <AppPressable
+          accessibilityLabel={playing ? 'Pause' : 'Play'}
+          haptic
+          onPress={onPlayPause}
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            width: 64,
+            height: 64,
+            marginTop: -32,
+            marginLeft: -32,
+            borderRadius: 32,
+            backgroundColor: colors.accent,
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2,
+          }}
+        >
           <Ionicons name={playing ? 'pause' : 'play'} size={32} color={colors.background} />
         </AppPressable>
-      </View>
-    </View>
+      </YStack>
+    </YStack>
   );
 }
-
-const styles = StyleSheet.create({
-  fullWrap: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.line,
-    backgroundColor: colors.surface,
-    paddingTop: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.xs,
-  },
-  times: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: -4,
-  },
-  jumpsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    minHeight: 32,
-    paddingHorizontal: spacing.sm,
-  },
-  jumpsLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  jumpsLabelOn: {
-    color: colors.accent,
-  },
-  time: {
-    color: colors.muted,
-    fontSize: 12,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '600',
-  },
-  fullControls: {
-    position: 'relative',
-    minHeight: 72,
-    justifyContent: 'center',
-    paddingVertical: spacing.sm,
-  },
-  fullControlsSides: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    zIndex: 1,
-  },
-  fullControlsRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  miniControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  controlBtn: {
-    minWidth: 48,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playBtnLarge: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    width: 64,
-    height: 64,
-    marginTop: -32,
-    marginLeft: -32,
-    borderRadius: 32,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  settingsBtn: {
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  miniWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.line,
-    backgroundColor: '#1A2E28',
-    paddingTop: spacing.sm,
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-  },
-  miniMain: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 56,
-  },
-  miniMeta: {
-    flex: 1,
-    gap: 2,
-  },
-  miniTitle: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  miniTime: {
-    color: colors.muted,
-    fontSize: 12,
-    fontVariant: ['tabular-nums'],
-  },
-  playBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

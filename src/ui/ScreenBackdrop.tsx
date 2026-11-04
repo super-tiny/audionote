@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { YStack } from 'tamagui';
 
 import { colors } from './theme';
 
@@ -10,16 +11,9 @@ type ScreenBackdropProps = {
 
 export function ScreenBackdrop({ children }: ScreenBackdropProps) {
   return (
-    <View style={styles.root}>
+    <YStack backgroundColor="background" style={{ flex: 1 }}>
       <LinearGradient colors={['#152433', colors.background, colors.background]} style={StyleSheet.absoluteFill} />
       {children}
-    </View>
+    </YStack>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-});

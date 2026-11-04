@@ -1,7 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, YStack } from 'tamagui';
 
 import { displayTitle, titleAccentColor, titleInitials } from './displayTitle';
-import { colors, radii } from './theme';
+import { colors } from './theme';
 
 type ArtworkAvatarProps = {
   title: string;
@@ -13,32 +13,21 @@ export function ArtworkAvatar({ title, size = 48 }: ArtworkAvatarProps) {
   const fontSize = Math.min(48, Math.max(12, Math.round(size * 0.34)));
 
   return (
-    <View
-      style={[
-        styles.avatar,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor,
-        },
-      ]}
+    <YStack
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 0.5,
+        borderColor: colors.line,
+      }}
     >
-      <Text style={[styles.initials, { fontSize }]}>{titleInitials(title)}</Text>
-    </View>
+      <Text color="text" fontWeight="700" style={{ letterSpacing: 0.5, fontSize }}>
+        {titleInitials(title)}
+      </Text>
+    </YStack>
   );
 }
-
-const styles = StyleSheet.create({
-  avatar: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-  },
-  initials: {
-    color: colors.text,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-});

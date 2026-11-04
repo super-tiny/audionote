@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal } from 'react-native';
+import type { ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, XStack, YStack } from 'tamagui';
 
 import { AppPressable } from './AppPressable';
 import { colors, radii, spacing } from './theme';
@@ -24,91 +26,80 @@ export function NavigationMenu({ visible, onClose, items }: NavigationMenuProps)
 
   return (
     <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close menu" />
-      <View style={[styles.panel, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}>
-        <View style={styles.panelHeader}>
-          <Text style={styles.panelTitle}>Menu</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose}>
-            <Ionicons name="close" size={24} color={colors.muted} />
-          </Pressable>
-        </View>
-        {items.map((item) => (
-          <AppPressable
-            key={item.label}
-            accessibilityRole="button"
-            disabled={item.disabled}
-            haptic
-            onPress={() => {
-              onClose();
-              item.onPress();
-            }}
-            style={[styles.item, item.disabled && styles.itemDisabled]}
-          >
-            <Ionicons name={item.icon} size={22} color={item.disabled ? colors.line : colors.accent} />
-            <View style={styles.itemText}>
-              <Text style={[styles.itemLabel, item.disabled && styles.itemLabelDisabled]}>{item.label}</Text>
-              {item.detail ? <Text style={styles.itemDetail}>{item.detail}</Text> : null}
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-          </AppPressable>
-        ))}
-      </View>
+      <YStack style={{ flex: 1 }}>
+        <YStack
+          onPress={onClose}
+          accessibilityLabel="Close menu"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.55)',
+          }}
+        />
+        <YStack
+          backgroundColor="surface"
+          style={
+            {
+              width: '82%',
+              maxWidth: 320,
+              height: '100%',
+              borderRightWidth: 0.5,
+              borderRightColor: colors.line,
+              paddingHorizontal: spacing.lg,
+              paddingTop: insets.top + spacing.lg,
+              paddingBottom: insets.bottom + spacing.lg,
+              gap: spacing.sm,
+            } as ViewStyle
+          }
+        >
+          <XStack style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
+            <Text color="text" fontSize={22} fontWeight="700">
+              Menu
+            </Text>
+            <AppPressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose}>
+              <Ionicons name="close" size={24} color={colors.muted} />
+            </AppPressable>
+          </XStack>
+          {items.map((item) => (
+            <AppPressable
+              key={item.label}
+              accessibilityRole="button"
+              disabled={item.disabled}
+              haptic
+              onPress={() => {
+                onClose();
+                item.onPress();
+              }}
+              backgroundColor="card"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: spacing.md,
+                minHeight: 56,
+                paddingHorizontal: spacing.md,
+                borderRadius: radii.md,
+                opacity: item.disabled ? 0.5 : 1,
+              }}
+            >
+              <Ionicons name={item.icon} size={22} color={item.disabled ? colors.line : colors.accent} />
+              <YStack style={{ flex: 1, gap: 2 }}>
+                <Text color={item.disabled ? 'muted' : 'text'} fontSize={16} fontWeight="600">
+                  {item.label}
+                </Text>
+                {item.detail ? (
+                  <Text color="muted" fontSize={13}>
+                    {item.detail}
+                  </Text>
+                ) : null}
+              </YStack>
+              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+            </AppPressable>
+          ))}
+        </YStack>
+      </YStack>
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-  },
-  panel: {
-    width: '82%',
-    maxWidth: 320,
-    height: '100%',
-    backgroundColor: colors.surface,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: colors.line,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-  },
-  panelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  panelTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  item: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 56,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.card,
-  },
-  itemDisabled: {
-    opacity: 0.5,
-  },
-  itemText: {
-    flex: 1,
-    gap: 2,
-  },
-  itemLabel: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  itemLabelDisabled: {
-    color: colors.muted,
-  },
-  itemDetail: {
-    color: colors.muted,
-    fontSize: 13,
-  },
-});

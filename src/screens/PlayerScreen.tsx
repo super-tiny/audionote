@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIsPlaying, useProgress } from '@rntp/player';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { TextInput } from 'react-native';
+import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import { clearJumps, deleteJump, listJumps } from '../db/jumps';
 import {
@@ -50,6 +51,8 @@ import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ScreenHeader } from '../ui/ScreenHeader';
 import { actionHaptic } from '../ui/haptics';
 import { colors, radii, spacing } from '../ui/theme';
+
+const DOCK_SPACE = 168;
 
 type PlayerScreenProps = NativeStackScreenProps<RootStackParamList, 'Player'> & {
   playerItemId: string | null;
@@ -257,17 +260,19 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   if (!item) {
     return (
       <ScreenBackdrop>
-        <View style={styles.screen}>
+        <YStack style={{ flex: 1, backgroundColor: colors.background }}>
           <ScreenHeader title="Lesson unavailable" onBack={() => navigation.goBack()} backLabel="Library" />
-          <Text style={styles.message}>This lesson is no longer in the library.</Text>
-        </View>
+          <Text color="danger" fontSize={15} lineHeight={22} style={{ paddingHorizontal: spacing.lg }}>
+            This lesson is no longer in the library.
+          </Text>
+        </YStack>
       </ScreenBackdrop>
     );
   }
 
   return (
     <ScreenBackdrop>
-      <View style={styles.screen}>
+      <YStack style={{ flex: 1, backgroundColor: colors.background }}>
         <ScreenHeader
           title=""
           onBack={() => navigation.goBack()}
@@ -286,54 +291,147 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             },
           ]}
         />
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.hero}>
+        <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: spacing.lg,
+            paddingBottom: DOCK_SPACE,
+            gap: spacing.md,
+          }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <YStack style={{ alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.md, gap: spacing.md }}>
             <ArtworkAvatar title={item.title} size={200} />
-            <Text style={styles.heroTitle}>{displayTitle(item.title, 56)}</Text>
-            <View style={styles.heroChips}>
-              <Text style={styles.heroChip}>{(item.format ?? 'audio').toUpperCase()}</Text>
-              <Text style={styles.heroChip}>{Math.round(heardFraction * 100)}% heard</Text>
-              <Text style={styles.heroChip}>{notes.length} notes</Text>
-              {missing ? <Text style={[styles.heroChip, styles.heroChipDanger]}>Missing file</Text> : null}
-            </View>
+            <Text color="text" fontSize={22} fontWeight="700" lineHeight={28} style={{ textAlign: 'center' }}>
+              {displayTitle(item.title, 56)}
+            </Text>
+            <XStack style={{ flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm }}>
+              <YStack
+                backgroundColor="accentSoft"
+                style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill, overflow: 'hidden' }}
+              >
+                <Text color="accent" fontSize={12} fontWeight="700">
+                  {(item.format ?? 'audio').toUpperCase()}
+                </Text>
+              </YStack>
+              <YStack
+                backgroundColor="accentSoft"
+                style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill, overflow: 'hidden' }}
+              >
+                <Text color="accent" fontSize={12} fontWeight="700">
+                  {Math.round(heardFraction * 100)}% heard
+                </Text>
+              </YStack>
+              <YStack
+                backgroundColor="accentSoft"
+                style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill, overflow: 'hidden' }}
+              >
+                <Text color="accent" fontSize={12} fontWeight="700">
+                  {notes.length} notes
+                </Text>
+              </YStack>
+              {missing ? (
+                <YStack
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: radii.pill,
+                    overflow: 'hidden',
+                    backgroundColor: 'rgba(240, 164, 164, 0.14)',
+                  }}
+                >
+                  <Text color="danger" fontSize={12} fontWeight="700">
+                    Missing file
+                  </Text>
+                </YStack>
+              ) : null}
+            </XStack>
             <AppPressable
               accessibilityRole="button"
               accessibilityLabel="Reset playback progress"
               haptic
               onPress={() => setResetOpen(true)}
-              style={styles.resetButton}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                minHeight: 36,
+                paddingHorizontal: spacing.md,
+                borderRadius: radii.pill,
+                backgroundColor: colors.card,
+              }}
             >
-              <Ionicons name="refresh-outline" size={16} color={colors.muted} />
-              <Text style={styles.resetButtonText}>Reset progress</Text>
+              <Ionicons name="refresh-outline" size={16} color="muted" />
+              <Text color="muted" fontSize={14} fontWeight="700">
+                Reset progress
+              </Text>
             </AppPressable>
-          </View>
+          </YStack>
 
           {loop.aMs != null && loop.bMs != null && loop.bMs > loop.aMs ? (
-            <View style={styles.loopBanner}>
-              <Ionicons name="repeat" size={16} color={colors.accent} />
-              <Text style={styles.loopLabel}>
+            <XStack
+              backgroundColor="accentSoft"
+              style={{
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: radii.md,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
+                gap: spacing.sm,
+              }}
+            >
+              <Ionicons name="repeat" size={16} color="accent" />
+              <Text color="accent" fontSize={14} fontWeight="600">
                 Loop {formatClock(loop.aMs)} – {formatClock(loop.bMs)}
               </Text>
-            </View>
+            </XStack>
           ) : null}
 
           {message ? <InlineBanner message={message} tone="error" onDismiss={() => setMessage(null)} /> : null}
           {missing ? (
-            <Pressable accessibilityRole="button" onPress={() => void onLocate()} style={styles.primary}>
-              <Ionicons name="locate-outline" size={18} color={colors.background} />
-              <Text style={styles.primaryText}>Locate file</Text>
-            </Pressable>
+            <AppPressable
+              accessibilityRole="button"
+              onPress={() => void onLocate()}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: colors.accent,
+                borderRadius: radii.md,
+                minHeight: 48,
+                gap: spacing.sm,
+              }}
+            >
+              <Ionicons name="locate-outline" size={18} color="background" />
+              <Text color="background" fontWeight="700" fontSize={16}>
+                Locate file
+              </Text>
+            </AppPressable>
           ) : null}
 
-          <View style={styles.notesCard}>
-            <Text style={styles.notesTitle}>Notes</Text>
-            <View style={styles.composer}>
+          <YStack
+            backgroundColor="card"
+            style={{ borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm }}
+          >
+            <Text color="text" fontSize={17} fontWeight="600">
+              Notes
+            </Text>
+            <XStack style={{ gap: spacing.sm, alignItems: 'flex-end' }}>
               <TextInput
                 value={draft}
                 onChangeText={setDraft}
                 placeholder={`Note at ${formatClock(notePositionMs(positionMs))}`}
                 placeholderTextColor={colors.muted}
-                style={styles.noteInput}
+                style={{
+                  flex: 1,
+                  minHeight: 48,
+                  maxHeight: 120,
+                  color: colors.text,
+                  backgroundColor: colors.surface,
+                  borderRadius: radii.md,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.sm,
+                  fontSize: 16,
+                }}
                 multiline
               />
               <AppPressable
@@ -343,29 +441,53 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
                   actionHaptic();
                   addNote();
                 }}
-                style={styles.addNote}
+                style={{
+                  minHeight: 48,
+                  paddingHorizontal: spacing.md,
+                  borderRadius: radii.md,
+                  backgroundColor: colors.cardRaised,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
               >
-                <Text style={styles.addNoteText}>Add</Text>
+                <Text color="accent" fontWeight="700" fontSize={16}>
+                  Add
+                </Text>
               </AppPressable>
-            </View>
+            </XStack>
             {notes.length === 0 ? (
-              <Text style={styles.noteEmpty}>Notes land a few seconds before the moment you tap Add.</Text>
+              <Text color="muted" fontSize={14} lineHeight={20}>
+                Notes land a few seconds before the moment you tap Add.
+              </Text>
             ) : (
               notes.map((note) => (
-                <View key={note.id} style={styles.noteRow}>
-                  <Pressable
+                <XStack
+                  key={note.id}
+                  style={{
+                    alignItems: 'center',
+                    paddingVertical: spacing.sm,
+                    gap: spacing.md,
+                    borderTopWidth: 0.5,
+                    borderTopColor: colors.line,
+                  }}
+                >
+                  <AppPressable
                     accessibilityRole="button"
                     onPress={() => {
                       const fromMs = progress.position * 1000;
                       seekToMs(note.positionMs);
                       rememberJump(fromMs, note.positionMs, 'note', 'defer');
                     }}
-                    style={styles.noteMain}
+                    style={{ flex: 1, gap: 2 }}
                   >
-                    <Text style={styles.noteTime}>{formatClock(note.positionMs)}</Text>
-                    <Text style={styles.noteText}>{note.text}</Text>
-                  </Pressable>
-                  <Pressable
+                    <Text color="accent" fontVariant={['tabular-nums']} fontSize={13} fontWeight="600">
+                      {formatClock(note.positionMs)}
+                    </Text>
+                    <Text color="text" fontSize={15} lineHeight={21}>
+                      {note.text}
+                    </Text>
+                  </AppPressable>
+                  <AppPressable
                     accessibilityRole="button"
                     onPress={() => {
                       if (pendingDeleteId === note.id) {
@@ -377,12 +499,14 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
                       }
                     }}
                   >
-                    <Text style={styles.deleteNote}>{pendingDeleteId === note.id ? 'Confirm' : 'Delete'}</Text>
-                  </Pressable>
-                </View>
+                    <Text color="danger" fontSize={14} fontWeight="600">
+                      {pendingDeleteId === note.id ? 'Confirm' : 'Delete'}
+                    </Text>
+                  </AppPressable>
+                </XStack>
               ))
             )}
-          </View>
+          </YStack>
         </ScrollView>
 
         <PlaybackDock
@@ -448,176 +572,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           onCancel={() => setResetOpen(false)}
           onConfirm={confirmResetProgress}
         />
-      </View>
+      </YStack>
     </ScreenBackdrop>
   );
 }
-
-const DOCK_SPACE = 168;
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: DOCK_SPACE,
-    gap: spacing.md,
-  },
-  hero: {
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  heroTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '700',
-    textAlign: 'center',
-    lineHeight: 28,
-  },
-  heroChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  heroChip: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: '700',
-    backgroundColor: colors.accentSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.pill,
-    overflow: 'hidden',
-  },
-  heroChipDanger: {
-    color: colors.danger,
-    backgroundColor: 'rgba(240, 164, 164, 0.14)',
-  },
-  resetButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 36,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.pill,
-    backgroundColor: colors.card,
-  },
-  resetButtonText: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  loopBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  loopLabel: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  message: {
-    color: colors.danger,
-    fontSize: 15,
-    lineHeight: 22,
-    paddingHorizontal: spacing.lg,
-  },
-  primary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.accent,
-    borderRadius: radii.md,
-    minHeight: 48,
-  },
-  primaryText: {
-    color: colors.background,
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  notesCard: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  notesTitle: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  composer: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'flex-end',
-  },
-  noteInput: {
-    flex: 1,
-    minHeight: 48,
-    maxHeight: 120,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 16,
-  },
-  addNote: {
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.cardRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addNoteText: {
-    color: colors.accent,
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  noteEmpty: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  noteRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.line,
-  },
-  noteMain: {
-    flex: 1,
-    gap: 2,
-  },
-  noteTime: {
-    color: colors.accent,
-    fontVariant: ['tabular-nums'],
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  noteText: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  deleteNote: {
-    color: colors.danger,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-});

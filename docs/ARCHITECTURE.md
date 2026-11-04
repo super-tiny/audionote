@@ -12,6 +12,7 @@ Expo SDK 58 (React Native 0.88, New Architecture) with continuous native generat
 | Screens | `@react-navigation/native-stack` in `src/navigation/RootNavigator.tsx`. Library shows a fixed mini player when audio is active; the full player pins transport and scrubbing to the bottom dock |
 | Playback | `@rntp/player` (React Native Track Player v5). `src/playback/session.ts` sets up speech playback, lock-screen commands, and a one-second progress ticker |
 | Library database | `expo-sqlite` via `src/db/open.ts`. Schema version 2 |
+| UI layout and typography | `tamagui` with `@tamagui/config` (`tamagui.config.ts`, dark AudioNote theme). Screens and components use `YStack` / `XStack` / `Text`; React Native `Modal`, `TextInput`, and `Switch` where needed |
 | Lists and gestures | `@shopify/flash-list`, `react-native-gesture-handler`, `react-native-reanimated` + `react-native-worklets` |
 | Files | Local module `modules/audionote-file-access`. `expo-file-system` reads only the head and tail of a file |
 
