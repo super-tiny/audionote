@@ -1,6 +1,6 @@
 # AudioNote
 
-AudioNote is a mobile app for **long-form study and lecture audio** on Android and iOS. Import files from your device, listen at variable speed, resume where you left off, and attach **timestamped notes**—without uploading your library to a cloud service.
+AudioNote is a mobile app for **long-form study and lecture audio** on Android and iOS. Import files from your device, listen at variable speed, return to the last point you played, see how much of a lesson you have actually heard, and attach **timestamped notes**—without uploading your library to a cloud service.
 
 Everything runs **on device**: playback state, listening history, and notes live in a local database. Original audio files stay in place; the app keeps a durable reference so entries remain stable even if you move or relink files later.
 
@@ -10,9 +10,11 @@ Everything runs **on device**: playback state, listening history, and notes live
 
 Long recordings (courses, sermons, language practice, podcasts you own) are awkward in generic music players. AudioNote is built for **sustained listening and review**:
 
-- **Resume reliably** — Each lesson remembers position, speed, and how much you have actually heard (not just scrub position).
+- **Return to the last point you played** — Opening a lesson seeks to the saved position. Continue listening lists lessons that are underway, with the resume time on each card. The position is written while you listen and again when playback pauses or the app leaves the foreground.
+- **Audio progress** — Percent heard counts the stretches you actually played. Seeking ahead leaves that gap unheard. Library cards show the heard fill and a marker at the resume position. The player scrub bar paints the same heard ranges.
+- **Jump history** — A scrub, a tap on the timeline, or opening a note records where you were and where you landed. Open **Jumps** on the player and tap a row to go back to the earlier time. Skip buttons and the 10-second replay stay off the list. Each lesson keeps the newest 50 jumps.
 - **Study-friendly controls** — Configurable skip intervals, playback speed, sleep timer, and A–B loop for repeating a section.
-- **Notes tied to time** — Add a note at the current moment; tap it later to jump back. Notes are stored with the lesson, not in a separate document.
+- **Notes tied to time** — Add a note a few seconds before the current moment; tap it later to jump back. That jump is recorded in history. Notes are stored with the lesson, not in a separate document.
 - **Background playback** — Continues with the screen off; lock-screen transport controls on supported devices.
 - **Private by design** — No account, no sync server, no analytics pipeline in the app shell described here.
 
@@ -22,7 +24,9 @@ Long recordings (courses, sermons, language practice, podcasts you own) are awkw
 
 | Area | What you get |
 | --- | --- |
-| **Library** | Search, import, progress per title, “continue listening,” missing-file relink |
+| **Library** | Search, import, resume position, percent heard, “continue listening,” missing-file relink |
+| **Progress** | Heard ranges on the scrub bar and on each library card. The resume cursor is the last played point. Percent heard is the time you actually played |
+| **Jump history** | Per-lesson list of scrubs, timeline taps, and note jumps. Tap a row to return to the position you left. Delete one row or clear the list |
 | **Player** | Scrub bar with heard ranges and note markers, centered transport, settings sheet (speed, sleep, loop, skip intervals) |
 | **Mini player** | When you return to the library while audio plays, a compact bar offers play/pause and seek without reopening the full player |
 | **Navigation** | Native stack navigation; system back returns from the player to the library |
@@ -33,7 +37,7 @@ Long recordings (courses, sermons, language practice, podcasts you own) are awkw
 
 - **Expo SDK 58** (React Native 0.88, New Architecture)
 - **Playback** — [`@rntp/player`](https://github.com/doublesymmetry/react-native-track-player) (React Native Track Player v5)
-- **Storage** — `expo-sqlite` for library metadata, notes, and listen ranges
+- **Storage** — `expo-sqlite` for library metadata, notes, listen ranges, and jump history
 - **Files** — Local `audionote-file-access` module plus targeted reads via `expo-file-system`
 
 Playback requires a **development or release build** (not Expo Go). Deeper build and module notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -114,7 +118,7 @@ Native projects are generated with `expo prebuild`; `android/` and `ios/` are no
 src/
   screens/          Library and full-screen player
   navigation/       React Navigation stack
-  playback/         Track player session, engine, progress persistence
+  playback/         Track player session, engine, progress, jump history
   db/               SQLite schema and library API
   library/          Import, search, listen-range logic
   ui/               Shared UI (dock, settings sheet, scrub bar, theme)
