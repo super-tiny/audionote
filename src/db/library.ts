@@ -119,6 +119,19 @@ export function setDurationMs(id: string, durationMs: number): void {
   getDatabase().runSync('UPDATE audio_item SET duration_ms = ? WHERE id = ?', Math.round(durationMs), id);
 }
 
+/**
+ * Clears listened ranges, resume position, and jump history for one lesson.
+ * Speed stays. Notes, the audio row, and settings are not written.
+ */
+export function resetStoredProgress(itemId: string, now = Date.now()): void {
+  const db = getDatabase();
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM listen_range WHERE item_id = ?', itemId);
+    db.runSync('DELETE FROM jump WHERE item_id = ?', itemId);
+    db.runSync('UPDATE playback_state SET position_ms = 0, updated_at = ? WHERE item_id = ?', now, itemId);
+  });
+}
+
 export function savePlayback(id: string, positionMs: number, speed: number, now = Date.now()): void {
   getDatabase().runSync(
     `INSERT INTO playback_state (item_id, position_ms, speed, updated_at)

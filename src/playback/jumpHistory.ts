@@ -70,6 +70,13 @@ export function cancelPendingJump(): void {
   scheduler.cancelPending();
 }
 
+/** Drop a pending jump for this lesson so a reset is not followed by a late write. */
+export function dropPendingJump(itemId: string): void {
+  if (scheduler.getPending()?.itemId === itemId) {
+    scheduler.cancelPending();
+  }
+}
+
 /** A scrub was cancelled. Put back the jump that was pending before the finger went down. */
 export function revertJumpDrag(): void {
   scheduler.revertDrag();

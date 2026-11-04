@@ -37,7 +37,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "node --experimental-strip-types --test src/media/duration.test.ts src/library/ranges.test.ts src/library/listenHistory.test.ts src/notes/capture.test.ts src/ui/displayTitle.test.ts src/playback/jumpRecord.test.ts plugins/withAndroidReleaseSigning.test.js",
+    "test": "node --experimental-strip-types --test src/media/duration.test.ts src/library/ranges.test.ts src/library/listenHistory.test.ts src/library/resetProgress.test.ts src/notes/capture.test.ts src/ui/displayTitle.test.ts src/playback/jumpRecord.test.ts plugins/withAndroidReleaseSigning.test.js",
     "test:android-signing": "bash scripts/test-android-signing.sh",
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",

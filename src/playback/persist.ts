@@ -25,7 +25,40 @@ let tracked: TrackedRange | null = null;
 let lastClosed: TrackedRange | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let ticks = 0;
+let ignoredItemId: string | null = null;
+let ignoreUntil = 0;
 const listeners = new Set<ListenListener>();
+
+function ignoring(itemId: string | null): boolean {
+  if (ignoredItemId == null || itemId !== ignoredItemId) {
+    return false;
+  }
+  if (Date.now() >= ignoreUntil) {
+    ignoredItemId = null;
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Drop the in-memory range and ignore playhead samples briefly.
+ * A seek back to the start can report the old position for a moment, and that
+ * sample must not recreate the ranges that were just deleted.
+ */
+export function beginProgressReset(itemId: string, holdMs = 2500): void {
+  ignoredItemId = itemId;
+  ignoreUntil = Date.now() + holdMs;
+  if (openRange?.itemId === itemId) {
+    openRange = null;
+  }
+  if (tracked?.itemId === itemId) {
+    tracked = null;
+  }
+  if (lastClosed?.itemId === itemId) {
+    lastClosed = null;
+  }
+  publish(itemId);
+}
 
 export function subscribeListenProgress(listener: ListenListener): () => void {
   listeners.add(listener);
@@ -35,7 +68,7 @@ export function subscribeListenProgress(listener: ListenListener): () => void {
 }
 
 export function currentOpenListen(): { itemId: string; sessionAt: number; range: ListenRange } | null {
-  if (!openRange) {
+  if (!openRange || ignoring(openRange.itemId)) {
     return null;
   }
   return {
@@ -47,7 +80,7 @@ export function currentOpenListen(): { itemId: string; sessionAt: number; range:
 
 function publish(itemId: string): void {
   const open =
-    openRange && openRange.itemId === itemId
+    openRange && openRange.itemId === itemId && !ignoring(itemId)
       ? { startMs: openRange.startMs, endMs: openRange.endMs }
       : null;
   for (const listener of listeners) {
@@ -91,6 +124,9 @@ function sameSpan(range: OpenListenRange, row: TrackedRange): boolean {
 }
 
 function writeRange(range: OpenListenRange, closing: boolean): void {
+  if (ignoring(range.itemId)) {
+    return;
+  }
   if (range.endMs - range.startMs < MIN_RANGE_MS) {
     if (closing && tracked && sameSpan(range, tracked)) {
       tracked = null;
@@ -135,6 +171,9 @@ function applyStep(step: { open: OpenListenRange | null; closed: OpenListenRange
 
 /** Extends a range that was closed a moment early, such as when the playhead resets at the end. */
 function creditTail(itemId: string, endMs: number): boolean {
+  if (ignoring(itemId)) {
+    return false;
+  }
   const target = tracked?.itemId === itemId ? tracked : lastClosed?.itemId === itemId ? lastClosed : null;
   if (!target || endMs <= target.endMs || endMs - target.endMs > SEEK_GAP_MS) {
     return false;
@@ -161,6 +200,15 @@ function dropOpen(): void {
   if (!openRange) {
     return;
   }
+  if (ignoring(openRange.itemId)) {
+    const itemId = openRange.itemId;
+    openRange = null;
+    if (tracked?.itemId === itemId) {
+      tracked = null;
+    }
+    publish(itemId);
+    return;
+  }
   const dangling = openRange;
   openRange = null;
   writeRange(dangling, true);
@@ -170,6 +218,9 @@ function dropOpen(): void {
 function recordListen(clock: Clock, forceEnded: boolean): string | null {
   const ended = forceEnded || clock.ended;
   const itemId = clock.itemId ?? (ended ? openRange?.itemId ?? lastClosed?.itemId ?? null : null);
+  if (ignoring(itemId)) {
+    return null;
+  }
   const positionMs = ended
     ? endedListenPositionMs(openRange, itemId, clock.positionMs, clock.durationMs)
     : clock.positionMs;
@@ -185,6 +236,9 @@ function recordListen(clock: Clock, forceEnded: boolean): string | null {
 }
 
 function saveResume(itemId: string, clock: Clock, forceEnded: boolean): void {
+  if (ignoring(itemId)) {
+    return;
+  }
   const ended = forceEnded || clock.ended;
   const positionMs = ended && clock.durationMs > 0 ? clock.durationMs : clock.positionMs;
   try {
@@ -203,6 +257,13 @@ export function flushProgress(options?: { ended?: boolean }): void {
     dropOpen();
     return;
   }
+  if (clock.itemId != null && ignoring(clock.itemId)) {
+    if (openRange?.itemId === clock.itemId) {
+      openRange = null;
+    }
+    publish(clock.itemId);
+    return;
+  }
   const itemId = recordListen(clock, options?.ended ?? false);
   if (itemId) {
     saveResume(itemId, clock, options?.ended ?? false);
@@ -217,6 +278,13 @@ export function startProgressTicker(): void {
     ticks += 1;
     const clock = readClock();
     if (!clock) {
+      return;
+    }
+    if (clock.itemId != null && ignoring(clock.itemId)) {
+      if (openRange?.itemId === clock.itemId) {
+        openRange = null;
+      }
+      publish(clock.itemId);
       return;
     }
     const itemId = recordListen(clock, false);
