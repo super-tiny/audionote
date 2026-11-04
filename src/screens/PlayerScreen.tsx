@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIsPlaying, useProgress } from '@rntp/player';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -14,7 +14,7 @@ import {
   rangesForItem,
 } from '../db/library';
 import type { AudioItem, Jump, Note } from '../db/types';
-import { listenedFraction, type ListenRange } from '../library/ranges';
+import { listenedFraction, projectHeardRanges, type ListenRange } from '../library/ranges';
 import { locateAudioFile } from '../library/import';
 import { createId } from '../media/identity';
 import { formatClock, notePositionMs } from '../notes/capture';
@@ -36,6 +36,7 @@ import {
   subscribeJumpHistory,
 } from '../playback/jumpHistory';
 import type { RecordedJumpSource } from '../playback/jumpRecord';
+import { currentOpenListen, subscribeListenProgress } from '../playback/persist';
 import { resetItemPlayback } from '../playback/resetItem';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
@@ -57,7 +58,7 @@ type PlayerScreenProps = NativeStackScreenProps<RootStackParamList, 'Player'> & 
 };
 
 export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScreenProps) {
-  const { itemId } = route.params;
+  const { itemId, seekMs, seekToken } = route.params;
   const playing = useIsPlaying();
   const progress = useProgress(0.25);
   const [item, setItem] = useState<AudioItem | null>(() => getItem(itemId));
@@ -65,6 +66,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [jumps, setJumps] = useState<Jump[]>(() => listJumps(itemId));
   const [jumpsOpen, setJumpsOpen] = useState(false);
   const [heard, setHeard] = useState<ListenRange[]>(() => rangesForItem(itemId));
+  const [openListen, setOpenListen] = useState<ListenRange | null>(null);
   const [skips, setSkips] = useState(() => readSkips());
   const [speed, setSpeedState] = useState(item?.speed ?? 1);
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
@@ -100,6 +102,10 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           setItem(getItem(itemId));
           if (!opened) {
             setMessage('The file is missing. Locate it and the notes stay on this lesson.');
+            return;
+          }
+          if (seekToken != null && seekMs != null) {
+            seekToMs(seekMs);
           }
         })
         .catch((error: unknown) => {
@@ -112,7 +118,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
       cancelled = true;
       flushJumpHistory();
     };
-  }, [itemId]);
+  }, [itemId, seekMs, seekToken]);
 
   useEffect(() => {
     setJumps(listJumps(itemId));
@@ -132,11 +138,26 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   }, [navigation]);
 
   useEffect(() => {
-    const handle = setInterval(() => {
+    const apply = () => {
       setHeard(rangesForItem(itemId));
+      const open = currentOpenListen();
+      setOpenListen(open?.itemId === itemId ? open.range : null);
+    };
+    apply();
+    const unsubscribe = subscribeListenProgress((update) => {
+      if (update.itemId === itemId) {
+        setHeard(rangesForItem(itemId));
+        setOpenListen(update.open);
+      }
+    });
+    const handle = setInterval(() => {
+      apply();
       setItem(getItem(itemId));
     }, 5000);
-    return () => clearInterval(handle);
+    return () => {
+      unsubscribe();
+      clearInterval(handle);
+    };
   }, [itemId]);
 
   const durationMs = Math.max(progress.duration * 1000, item?.durationMs ?? 0);
@@ -216,6 +237,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   function confirmResetProgress(): void {
     resetItemPlayback(itemId);
     setHeard([]);
+    setOpenListen(null);
     setJumps([]);
     setScrubMs(null);
     const current = getItem(itemId);
@@ -226,7 +248,11 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     setResetOpen(false);
   }
 
-  const heardFraction = listenedFraction(heard, durationMs);
+  const visibleHeard = useMemo(
+    () => projectHeardRanges(heard, openListen, positionMs, playing && scrubMs == null),
+    [heard, openListen, positionMs, playing, scrubMs],
+  );
+  const heardFraction = listenedFraction(visibleHeard, durationMs);
 
   if (!item) {
     return (
@@ -248,6 +274,11 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           backLabel=""
           backIcon="chevron-down"
           actions={[
+            {
+              icon: 'time-outline',
+              label: 'Listening history',
+              onPress: () => navigation.navigate({ name: 'ListenHistory', params: { itemId }, merge: false }),
+            },
             {
               icon: 'options-outline',
               label: 'Playback settings',
@@ -359,7 +390,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           title={item.title}
           durationMs={durationMs}
           positionMs={positionMs}
-          heard={heard}
+          heard={visibleHeard}
           markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
           scrubMs={scrubMs}
           onScrub={setScrubMs}

@@ -1,3 +1,4 @@
+import type { ListenPortion } from '../library/listenHistory';
 import { likePattern } from '../library/search';
 import { AUDIO_SELECT, mapAudioItem, type AudioItem, type Note, type StoredRange } from './types';
 import { getDatabase } from './open';
@@ -146,14 +147,19 @@ export function savePlayback(id: string, positionMs: number, speed: number, now 
   );
 }
 
-export function insertListenRange(itemId: string, startMs: number, endMs: number, sessionAt: number): void {
-  getDatabase().runSync(
+export function insertListenRange(itemId: string, startMs: number, endMs: number, sessionAt: number): number {
+  const result = getDatabase().runSync(
     'INSERT INTO listen_range (item_id, start_ms, end_ms, session_at) VALUES (?, ?, ?, ?)',
     itemId,
     Math.round(startMs),
     Math.round(endMs),
     sessionAt,
   );
+  return Number(result.lastInsertRowId);
+}
+
+export function updateListenRangeEnd(id: number, endMs: number): void {
+  getDatabase().runSync('UPDATE listen_range SET end_ms = ? WHERE id = ?', Math.round(endMs), id);
 }
 
 export function rangesForItem(itemId: string): StoredRange[] {
@@ -162,6 +168,49 @@ export function rangesForItem(itemId: string): StoredRange[] {
     itemId,
   ).map((row) => ({ startMs: row.start_ms, endMs: row.end_ms, sessionAt: row.session_at }));
 }
+
+export function listListenHistory(itemId: string | null): ListenPortion[] {
+  const sql = itemId
+    ? `SELECT listen_range.id AS id,
+              listen_range.item_id AS item_id,
+              audio_item.title AS title,
+              listen_range.start_ms AS start_ms,
+              listen_range.end_ms AS end_ms,
+              listen_range.session_at AS session_at
+       FROM listen_range
+       JOIN audio_item ON audio_item.id = listen_range.item_id
+       WHERE listen_range.item_id = ?
+       ORDER BY listen_range.start_ms ASC, listen_range.id ASC`
+    : `SELECT listen_range.id AS id,
+              listen_range.item_id AS item_id,
+              audio_item.title AS title,
+              listen_range.start_ms AS start_ms,
+              listen_range.end_ms AS end_ms,
+              listen_range.session_at AS session_at
+       FROM listen_range
+       JOIN audio_item ON audio_item.id = listen_range.item_id
+       ORDER BY listen_range.start_ms ASC, listen_range.id ASC`;
+  const rows = itemId
+    ? getDatabase().getAllSync<ListenHistoryRow>(sql, itemId)
+    : getDatabase().getAllSync<ListenHistoryRow>(sql);
+  return rows.map((row) => ({
+    id: row.id,
+    itemId: row.item_id,
+    title: row.title,
+    startMs: row.start_ms,
+    endMs: row.end_ms,
+    sessionAt: row.session_at,
+  }));
+}
+
+type ListenHistoryRow = {
+  id: number;
+  item_id: string;
+  title: string;
+  start_ms: number;
+  end_ms: number;
+  session_at: number;
+};
 
 export function rangesSince(sessionAt: number): StoredRange[] {
   return getDatabase().getAllSync<{ start_ms: number; end_ms: number; session_at: number }>(

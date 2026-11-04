@@ -1,4 +1,4 @@
-import TrackPlayer, { Event, PlayerCommand } from '@rntp/player';
+import TrackPlayer, { Event, PlaybackState, PlayerCommand } from '@rntp/player';
 
 import { ensureDatabase } from '../db/open';
 import { writeSkips, readSkips } from './engine';
@@ -44,6 +44,12 @@ export function registerPlaybackSession(): void {
         flushJumpHistoryIfStillPaused();
       } else {
         cancelPausedJumpFlush();
+        flushProgress();
+      }
+    });
+    TrackPlayer.addEventListener(Event.PlaybackStateChanged, ({ state }) => {
+      if (state === PlaybackState.Ended) {
+        flushProgress({ ended: true });
       }
     });
     startProgressTicker();
