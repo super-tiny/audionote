@@ -36,6 +36,7 @@ import {
   subscribeJumpHistory,
 } from '../playback/jumpHistory';
 import type { RecordedJumpSource } from '../playback/jumpRecord';
+import { resetItemPlayback } from '../playback/resetItem';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
 import { displayTitle } from '../ui/displayTitle';
@@ -43,6 +44,7 @@ import { InlineBanner } from '../ui/InlineBanner';
 import { JumpHistorySheet } from '../ui/JumpHistorySheet';
 import { PlaybackDock } from '../ui/PlaybackDock';
 import { PlaybackSettingsSheet, type LoopPoints } from '../ui/PlaybackSettingsSheet';
+import { ResetProgressSheet } from '../ui/ResetProgressSheet';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ScreenHeader } from '../ui/ScreenHeader';
 import { actionHaptic } from '../ui/haptics';
@@ -73,6 +75,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [missing, setMissing] = useState(item?.missing ?? false);
   const [message, setMessage] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
   const loopGuard = useRef(false);
 
   useEffect(() => {
@@ -210,6 +213,19 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     }
   }
 
+  function confirmResetProgress(): void {
+    resetItemPlayback(itemId);
+    setHeard([]);
+    setJumps([]);
+    setScrubMs(null);
+    const current = getItem(itemId);
+    setItem(current);
+    if (current) {
+      setSpeedState(current.speed || 1);
+    }
+    setResetOpen(false);
+  }
+
   const heardFraction = listenedFraction(heard, durationMs);
 
   if (!item) {
@@ -249,6 +265,16 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
               <Text style={styles.heroChip}>{notes.length} notes</Text>
               {missing ? <Text style={[styles.heroChip, styles.heroChipDanger]}>Missing file</Text> : null}
             </View>
+            <AppPressable
+              accessibilityRole="button"
+              accessibilityLabel="Reset playback progress"
+              haptic
+              onPress={() => setResetOpen(true)}
+              style={styles.resetButton}
+            >
+              <Ionicons name="refresh-outline" size={16} color={colors.muted} />
+              <Text style={styles.resetButtonText}>Reset progress</Text>
+            </AppPressable>
           </View>
 
           {loop.aMs != null && loop.bMs != null && loop.bMs > loop.aMs ? (
@@ -385,6 +411,12 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           onDelete={removeJump}
           onClear={clearJumpList}
         />
+        <ResetProgressSheet
+          visible={resetOpen}
+          title={item.title}
+          onCancel={() => setResetOpen(false)}
+          onConfirm={confirmResetProgress}
+        />
       </View>
     </ScreenBackdrop>
   );
@@ -434,6 +466,20 @@ const styles = StyleSheet.create({
   heroChipDanger: {
     color: colors.danger,
     backgroundColor: 'rgba(240, 164, 164, 0.14)',
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+    backgroundColor: colors.card,
+  },
+  resetButtonText: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '700',
   },
   loopBanner: {
     flexDirection: 'row',

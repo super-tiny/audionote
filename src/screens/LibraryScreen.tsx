@@ -17,6 +17,7 @@ import { refreshPresence } from '../library/files';
 import { coveredMs, listenedFraction } from '../library/ranges';
 import { formatClock, formatHours } from '../notes/capture';
 import type { RootStackParamList } from '../navigation/types';
+import { resetItemPlayback } from '../playback/resetItem';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
 import { displayTitle } from '../ui/displayTitle';
@@ -25,6 +26,7 @@ import { PlaybackDock } from '../ui/PlaybackDock';
 import { AboutSheet } from '../ui/AboutSheet';
 import { NavigationMenu } from '../ui/NavigationMenu';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
+import { ResetProgressSheet } from '../ui/ResetProgressSheet';
 import { ScreenHeader } from '../ui/ScreenHeader';
 import { actionHaptic } from '../ui/haptics';
 import { colors, elevation, radii, spacing } from '../ui/theme';
@@ -82,6 +84,7 @@ export function LibraryScreen({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<AudioItem | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -324,6 +327,15 @@ export function LibraryScreen({
                 ) : null}
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel={`Reset playback progress for ${displayTitle(item.title)}`}
+                  onPress={() => setResetTarget(item)}
+                  style={styles.actionBtn}
+                >
+                  <Ionicons name="refresh-outline" size={16} color={colors.muted} />
+                  <Text style={styles.actionText}>Reset</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
                   onPress={() => {
                     if (pendingDeleteId === item.id) {
                       deleteItem(item.id);
@@ -350,6 +362,19 @@ export function LibraryScreen({
               </View>
             </View>
           );
+        }}
+      />
+      <ResetProgressSheet
+        visible={resetTarget != null}
+        title={resetTarget?.title ?? ''}
+        onCancel={() => setResetTarget(null)}
+        onConfirm={() => {
+          if (!resetTarget) {
+            return;
+          }
+          resetItemPlayback(resetTarget.id);
+          setResetTarget(null);
+          setRevision((value) => value + 1);
         }}
       />
       {playerItemId && playerTitle ? (

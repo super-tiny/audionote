@@ -6,6 +6,36 @@ import { nextListenRange, type OpenListenRange } from '../library/ranges';
 let openRange: OpenListenRange | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let ticks = 0;
+let ignoredItemId: string | null = null;
+let ignoreUntil = 0;
+
+function ignoring(itemId: string | null): boolean {
+  if (ignoredItemId == null || itemId !== ignoredItemId) {
+    return false;
+  }
+  if (Date.now() >= ignoreUntil) {
+    ignoredItemId = null;
+    return false;
+  }
+  return true;
+}
+
+function dropIgnoredOpenRange(): void {
+  if (openRange && ignoring(openRange.itemId)) {
+    openRange = null;
+  }
+}
+
+/**
+ * Drop the in-memory range and ignore playhead samples briefly.
+ * A seek back to the start can report the old position for a moment, and that
+ * sample must not recreate the ranges that were just deleted.
+ */
+export function beginProgressReset(itemId: string, holdMs = 2500): void {
+  ignoredItemId = itemId;
+  ignoreUntil = Date.now() + holdMs;
+  dropIgnoredOpenRange();
+}
 
 function activeItemId(): string | null {
   try {
@@ -19,6 +49,10 @@ function closeOpenRange(): void {
   if (!openRange) {
     return;
   }
+  if (ignoring(openRange.itemId)) {
+    openRange = null;
+    return;
+  }
   const closed = openRange;
   openRange = null;
   if (closed.endMs - closed.startMs >= 500) {
@@ -28,6 +62,11 @@ function closeOpenRange(): void {
 
 export function flushProgress(): void {
   const itemId = activeItemId();
+  if (ignoring(itemId)) {
+    dropIgnoredOpenRange();
+    return;
+  }
+  dropIgnoredOpenRange();
   let positionMs = 0;
   let durationMs = 0;
   let playing = false;
@@ -64,6 +103,11 @@ export function startProgressTicker(): void {
   timer = setInterval(() => {
     ticks += 1;
     const itemId = activeItemId();
+    if (ignoring(itemId)) {
+      dropIgnoredOpenRange();
+      return;
+    }
+    dropIgnoredOpenRange();
     let playing = false;
     let positionMs = 0;
     let durationMs = 0;
