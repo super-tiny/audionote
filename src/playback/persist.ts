@@ -5,6 +5,7 @@ import {
   endedListenPositionMs,
   MIN_RANGE_MS,
   nextListenRange,
+  playbackGapLimitMs,
   SEEK_GAP_MS,
   type ListenRange,
   type OpenListenRange,
@@ -27,6 +28,7 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let ticks = 0;
 let ignoredItemId: string | null = null;
 let ignoreUntil = 0;
+let lastProgressAt: number | null = null;
 const listeners = new Set<ListenListener>();
 
 function ignoring(itemId: string | null): boolean {
@@ -57,6 +59,7 @@ export function beginProgressReset(itemId: string, holdMs = 2500): void {
   if (lastClosed?.itemId === itemId) {
     lastClosed = null;
   }
+  lastProgressAt = null;
   publish(itemId);
 }
 
@@ -215,16 +218,36 @@ function dropOpen(): void {
   publish(dangling.itemId);
 }
 
-function recordListen(clock: Clock, forceEnded: boolean): string | null {
+function readSpeed(): number {
+  try {
+    const speed = TrackPlayer.getPlaybackSpeed();
+    return Number.isFinite(speed) && speed > 0 ? speed : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function recordListen(clock: Clock, forceEnded: boolean, sampledAt = Date.now()): string | null {
   const ended = forceEnded || clock.ended;
   const itemId = clock.itemId ?? (ended ? openRange?.itemId ?? lastClosed?.itemId ?? null : null);
   if (ignoring(itemId)) {
     return null;
   }
+  const elapsed = lastProgressAt == null ? 0 : Math.max(0, sampledAt - lastProgressAt);
+  if (lastProgressAt == null || sampledAt >= lastProgressAt) {
+    lastProgressAt = sampledAt;
+  }
   const positionMs = ended
     ? endedListenPositionMs(openRange, itemId, clock.positionMs, clock.durationMs)
     : clock.positionMs;
-  const step = nextListenRange(openRange, itemId, positionMs, ended ? false : clock.playing, Date.now());
+  const step = nextListenRange(
+    openRange,
+    itemId,
+    positionMs,
+    ended ? false : clock.playing,
+    sampledAt,
+    playbackGapLimitMs(elapsed, readSpeed()),
+  );
   applyStep(step);
   if (ended && itemId) {
     const endMs = clock.durationMs > 0 ? clock.durationMs : positionMs;
@@ -248,6 +271,39 @@ function saveResume(itemId: string, clock: Clock, forceEnded: boolean): void {
     }
   } catch {
     // Getters throw while the native session is tearing down.
+  }
+}
+
+/**
+ * Native playback clock. It keeps firing while the app is minimized or the
+ * screen is locked, which is when the JavaScript timer is suspended.
+ * `position` and `duration` are seconds.
+ */
+export function recordSyncedProgress(event: {
+  mediaId: string;
+  position: number;
+  duration: number;
+  timestamp: number;
+}): void {
+  const sampledAt = Number.isFinite(event.timestamp) && event.timestamp > 0 ? event.timestamp : Date.now();
+  const clock: Clock = {
+    itemId: event.mediaId,
+    positionMs: event.position * 1000,
+    durationMs: event.duration * 1000,
+    playing: true,
+    ended: false,
+  };
+  if (clock.itemId != null && ignoring(clock.itemId)) {
+    if (openRange?.itemId === clock.itemId) {
+      openRange = null;
+    }
+    lastProgressAt = sampledAt;
+    publish(clock.itemId);
+    return;
+  }
+  const itemId = recordListen(clock, false, sampledAt);
+  if (itemId) {
+    saveResume(itemId, clock, false);
   }
 }
 

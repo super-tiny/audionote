@@ -47,8 +47,25 @@ function closableRange(open: OpenListenRange | null): OpenListenRange | null {
 }
 
 /**
+ * How far the playhead may move and still count as listening.
+ * A sample every second uses the short seek gap. A later sample, after the app
+ * was backgrounded or the screen was locked, may cover a longer stretch when
+ * that stretch matches the time that actually passed at the current speed.
+ */
+export function playbackGapLimitMs(elapsedMs: number, speed: number): number {
+  const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  const rate = Number.isFinite(speed) && speed > 0 ? speed : 1;
+  const expected = elapsed * rate;
+  if (expected <= SEEK_GAP_MS) {
+    return SEEK_GAP_MS;
+  }
+  const tolerance = Math.max(SEEK_GAP_MS, expected * 0.5);
+  return expected + tolerance;
+}
+
+/**
  * Extends the open listened interval while playback moves forward.
- * A backward jump or a gap larger than a few seconds closes the interval so a seek is not counted as listening.
+ * A backward jump or a gap larger than the seek limit closes the interval so a seek is not counted as listening.
  * Pausing includes the latest position when it still belongs to the open interval, so the tail is not dropped.
  */
 export function nextListenRange(
@@ -57,8 +74,10 @@ export function nextListenRange(
   positionMs: number,
   playing: boolean,
   now: number,
+  gapLimitMs = SEEK_GAP_MS,
 ): { open: OpenListenRange | null; closed: OpenListenRange | null } {
   const closable = closableRange(open);
+  const limit = Number.isFinite(gapLimitMs) && gapLimitMs > 0 ? gapLimitMs : SEEK_GAP_MS;
   if (!itemId) {
     return { open: null, closed: closable };
   }
@@ -72,7 +91,7 @@ export function nextListenRange(
     };
   }
   const gap = positionMs - open.endMs;
-  if (gap < 0 || gap > SEEK_GAP_MS) {
+  if (gap < 0 || gap > limit) {
     if (!playing) {
       return { open: null, closed: closable };
     }
