@@ -133,14 +133,19 @@ export function savePlayback(id: string, positionMs: number, speed: number, now 
   );
 }
 
-export function insertListenRange(itemId: string, startMs: number, endMs: number, sessionAt: number): void {
-  getDatabase().runSync(
+export function insertListenRange(itemId: string, startMs: number, endMs: number, sessionAt: number): number {
+  const result = getDatabase().runSync(
     'INSERT INTO listen_range (item_id, start_ms, end_ms, session_at) VALUES (?, ?, ?, ?)',
     itemId,
     Math.round(startMs),
     Math.round(endMs),
     sessionAt,
   );
+  return Number(result.lastInsertRowId);
+}
+
+export function updateListenRangeEnd(id: number, endMs: number): void {
+  getDatabase().runSync('UPDATE listen_range SET end_ms = ? WHERE id = ?', Math.round(endMs), id);
 }
 
 export function rangesForItem(itemId: string): StoredRange[] {
