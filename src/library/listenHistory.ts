@@ -163,25 +163,24 @@ export function selectPortions(
   );
 }
 
-type Continuation = {
-  endMs: number;
-  sessionAt: number;
-};
-
 /**
  * The later listen picks up where the earlier one ended, and it started less than
  * a minute after that earlier listen started. Replays and skipped gaps do not qualify.
  */
-export function isSequentialContinuation(previous: Continuation, next: ListenPortion): boolean {
-  const gap = next.sessionAt - previous.sessionAt;
+export function isSequentialContinuation(
+  previousEndMs: number,
+  previousStartedAt: number,
+  next: Pick<ListenPortion, 'startMs' | 'endMs' | 'sessionAt'>,
+): boolean {
+  const gap = next.sessionAt - previousStartedAt;
   if (gap < 0 || gap >= SEQUENTIAL_START_GAP_MS) {
     return false;
   }
-  const join = next.startMs - previous.endMs;
+  const join = next.startMs - previousEndMs;
   if (join < -SEQUENTIAL_JOIN_MS || join > SEQUENTIAL_JOIN_MS) {
     return false;
   }
-  return next.endMs > previous.endMs;
+  return next.endMs > previousEndMs;
 }
 
 type Draft = {
@@ -193,15 +192,23 @@ type Draft = {
 function mergeSequentialGroup(group: readonly ListenPortion[]): ListenPortion[] {
   const ordered = [...group].sort((left, right) => left.sessionAt - right.sessionAt || left.id - right.id);
   const drafts: Draft[] = [];
+  // Drafts are visited in session order and an anchor only moves forward, so a
+  // draft whose latest piece is already a minute behind can never join a later one.
+  const active: Draft[] = [];
   for (const next of ordered) {
+    const cutoff = next.sessionAt - SEQUENTIAL_START_GAP_MS;
+    let keep = 0;
+    for (const candidate of active) {
+      if (candidate.anchorAt > cutoff) {
+        active[keep] = candidate;
+        keep += 1;
+      }
+    }
+    active.length = keep;
+
     let host: Draft | null = null;
-    for (const candidate of drafts) {
-      if (
-        !isSequentialContinuation(
-          { endMs: candidate.portion.endMs, sessionAt: candidate.anchorAt },
-          next,
-        )
-      ) {
+    for (const candidate of active) {
+      if (!isSequentialContinuation(candidate.portion.endMs, candidate.anchorAt, next)) {
         continue;
       }
       if (!host || candidate.anchorAt >= host.anchorAt) {
@@ -209,7 +216,7 @@ function mergeSequentialGroup(group: readonly ListenPortion[]): ListenPortion[] 
       }
     }
     if (!host) {
-      drafts.push({
+      const draft: Draft = {
         portion: {
           id: next.id,
           itemId: next.itemId,
@@ -219,7 +226,9 @@ function mergeSequentialGroup(group: readonly ListenPortion[]): ListenPortion[] 
           sessionAt: next.sessionAt,
         },
         anchorAt: next.sessionAt,
-      });
+      };
+      drafts.push(draft);
+      active.push(draft);
       continue;
     }
     host.portion = {
@@ -269,6 +278,12 @@ export function repeatedSections(ranges: readonly ReplaySpan[]): ReplaySpan[] {
 function replaySpansWithin(portion: ReplaySpan, spans: readonly ReplaySpan[]): ReplaySpan[] {
   const hits: ReplaySpan[] = [];
   for (const span of spans) {
+    if (span.startMs >= portion.endMs) {
+      break;
+    }
+    if (span.endMs <= portion.startMs) {
+      continue;
+    }
     const startMs = Math.max(portion.startMs, span.startMs);
     const endMs = Math.min(portion.endMs, span.endMs);
     if (endMs > startMs) {
@@ -301,10 +316,10 @@ export function aggregateSequentialPortions(portions: readonly ListenPortion[]):
     aggregated.push(...merged);
     spansByItem.set(itemId, repeatedSections(merged));
   }
-  return aggregated.map((portion) => ({
-    ...portion,
-    replays: replaySpansWithin(portion, spansByItem.get(portion.itemId) ?? []),
-  }));
+  for (const portion of aggregated) {
+    portion.replays = replaySpansWithin(portion, spansByItem.get(portion.itemId) ?? []);
+  }
+  return aggregated;
 }
 
 /** Important sections for one lesson: audio that was played again, after sequential passes are combined. */
@@ -312,7 +327,7 @@ export function importantSections(
   ranges: readonly { startMs: number; endMs: number; sessionAt: number }[],
 ): ReplaySpan[] {
   return repeatedSections(
-    aggregateSequentialPortions(
+    mergeSequentialGroup(
       ranges.map((range, index) => ({
         id: index,
         itemId: 'lesson',

@@ -140,6 +140,22 @@ test('a chain uses each hop’s own start, so the whole pass can run past one mi
   );
 });
 
+test('a long chain stays one record while each hop starts within a minute', () => {
+  const passes: ListenPortion[] = [];
+  let endMs = 0;
+  for (let index = 0; index < 30; index += 1) {
+    const startMs = endMs;
+    endMs = startMs + 5_000;
+    passes.push(portion(index + 1, startMs, endMs, index * 30_000));
+  }
+  const merged = aggregateSequentialPortions(passes);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]?.startMs, 0);
+  assert.equal(merged[0]?.endMs, 150_000);
+  assert.equal(merged[0]?.sessionAt, 0);
+  assert.deepEqual(merged[0]?.replays, []);
+});
+
 test('does not merge a skip, and absorbs only a small resume gap or rewind', () => {
   const skipped = aggregateSequentialPortions([
     portion(1, 10_000, 15_000, 0),

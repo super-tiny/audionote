@@ -52,6 +52,26 @@ import { ScreenHeader } from '../ui/ScreenHeader';
 import { actionHaptic } from '../ui/haptics';
 import { colors, radii, spacing } from '../ui/theme';
 
+function sameStoredRanges(left: readonly StoredRange[], right: readonly StoredRange[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    const previous = left[index];
+    const next = right[index];
+    if (
+      !previous ||
+      !next ||
+      previous.startMs !== next.startMs ||
+      previous.endMs !== next.endMs ||
+      previous.sessionAt !== next.sessionAt
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 type PlayerScreenProps = NativeStackScreenProps<RootStackParamList, 'Player'> & {
   playerItemId: string | null;
   playerTitle: string | null;
@@ -90,7 +110,8 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     const current = getItem(itemId);
     setItem(current);
     setNotes(listNotes(itemId));
-    setHeard(rangesForItem(itemId));
+    const stored = rangesForItem(itemId);
+    setHeard((current) => (sameStoredRanges(current, stored) ? current : stored));
     if (current) {
       setSpeedState(current.speed || 1);
       void openItem(current)
@@ -140,14 +161,16 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
 
   useEffect(() => {
     const apply = () => {
-      setHeard(rangesForItem(itemId));
+      const stored = rangesForItem(itemId);
+      setHeard((current) => (sameStoredRanges(current, stored) ? current : stored));
       const open = currentOpenListen();
       setOpenListen(open?.itemId === itemId ? open.range : null);
     };
     apply();
     const unsubscribe = subscribeListenProgress((update) => {
       if (update.itemId === itemId) {
-        setHeard(rangesForItem(itemId));
+        const stored = rangesForItem(itemId);
+        setHeard((current) => (sameStoredRanges(current, stored) ? current : stored));
         setOpenListen(update.open);
       }
     });

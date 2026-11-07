@@ -9,12 +9,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getItem, listListenHistory } from '../db/library';
 import {
   DURATION_FILTERS,
+  aggregateSequentialPortions,
   durationBand,
   filterProblem,
   LONG_MIN_MS,
   parseMinutes,
   portionDurationMs,
-  selectPortions,
+  portionMatches,
+  sortPortions,
   type DurationBand,
   type ListenPortion,
   type ListenSortKey,
@@ -96,9 +98,15 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
 
   const filter = useMemo(() => buildFilter(kind, minText, maxText), [kind, minText, maxText]);
   const problem = filterProblem(filter);
+  const aggregated = useMemo(() => aggregateSequentialPortions(portions), [portions]);
   const visible = useMemo(
-    () => selectPortions(portions, filter, sortKey, direction),
-    [portions, filter, sortKey, direction],
+    () =>
+      sortPortions(
+        aggregated.filter((portion) => portionMatches(portionDurationMs(portion), filter)),
+        sortKey,
+        direction,
+      ),
+    [aggregated, filter, sortKey, direction],
   );
   const hint = DURATION_FILTERS.find((entry) => entry.kind === kind)?.hint ?? '';
   const totalMs = visible.reduce((sum, portion) => sum + portionDurationMs(portion), 0);
