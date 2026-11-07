@@ -9,7 +9,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getItem, listListenHistory } from '../db/library';
 import {
   DURATION_FILTERS,
-  aggregateSequentialPortions,
   durationBand,
   filterProblem,
   LONG_MIN_MS,
@@ -57,6 +56,40 @@ function formatListenedAt(ms: number): string {
   });
 }
 
+function samePortions(left: readonly ListenPortion[], right: readonly ListenPortion[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    const previous = left[index];
+    const next = right[index];
+    if (
+      !previous ||
+      !next ||
+      previous.id !== next.id ||
+      previous.startMs !== next.startMs ||
+      previous.endMs !== next.endMs ||
+      previous.sessionAt !== next.sessionAt ||
+      previous.itemId !== next.itemId
+    ) {
+      return false;
+    }
+    const previousReplays = previous.replays ?? [];
+    const nextReplays = next.replays ?? [];
+    if (previousReplays.length !== nextReplays.length) {
+      return false;
+    }
+    for (let replayIndex = 0; replayIndex < previousReplays.length; replayIndex += 1) {
+      const before = previousReplays[replayIndex];
+      const after = nextReplays[replayIndex];
+      if (!before || !after || before.startMs !== after.startMs || before.endMs !== after.endMs) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function buildFilter(kind: PortionFilter['kind'], minText: string, maxText: string): PortionFilter {
   if (kind !== 'custom') {
     return { kind };
@@ -84,7 +117,8 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
   const lesson = itemId ? getItem(itemId) : null;
 
   const reload = useCallback(() => {
-    setPortions(listListenHistory(itemId));
+    const next = listListenHistory(itemId);
+    setPortions((current) => (samePortions(current, next) ? current : next));
   }, [itemId]);
 
   useFocusEffect(
@@ -98,15 +132,14 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
 
   const filter = useMemo(() => buildFilter(kind, minText, maxText), [kind, minText, maxText]);
   const problem = filterProblem(filter);
-  const aggregated = useMemo(() => aggregateSequentialPortions(portions), [portions]);
   const visible = useMemo(
     () =>
       sortPortions(
-        aggregated.filter((portion) => portionMatches(portionDurationMs(portion), filter)),
+        portions.filter((portion) => portionMatches(portionDurationMs(portion), filter)),
         sortKey,
         direction,
       ),
-    [aggregated, filter, sortKey, direction],
+    [portions, filter, sortKey, direction],
   );
   const hint = DURATION_FILTERS.find((entry) => entry.kind === kind)?.hint ?? '';
   const totalMs = visible.reduce((sum, portion) => sum + portionDurationMs(portion), 0);

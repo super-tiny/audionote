@@ -35,6 +35,8 @@ export type ListenPortion = {
   startMs: number;
   endMs: number;
   sessionAt: number;
+  /** Start time of the latest raw listen folded into this record. */
+  anchorAt?: number;
   /** Subspans also covered by another listen of the same lesson. */
   replays?: readonly ReplaySpan[];
 };
@@ -224,6 +226,7 @@ function mergeSequentialGroup(group: readonly ListenPortion[]): ListenPortion[] 
           startMs: next.startMs,
           endMs: next.endMs,
           sessionAt: next.sessionAt,
+          anchorAt: next.sessionAt,
         },
         anchorAt: next.sessionAt,
       };
@@ -231,12 +234,13 @@ function mergeSequentialGroup(group: readonly ListenPortion[]): ListenPortion[] 
       active.push(draft);
       continue;
     }
+    host.anchorAt = next.sessionAt;
     host.portion = {
       ...host.portion,
       startMs: Math.min(host.portion.startMs, next.startMs),
       endMs: Math.max(host.portion.endMs, next.endMs),
+      anchorAt: next.sessionAt,
     };
-    host.anchorAt = next.sessionAt;
   }
   return drafts.map((draft) => draft.portion);
 }
@@ -275,7 +279,35 @@ export function repeatedSections(ranges: readonly ReplaySpan[]): ReplaySpan[] {
   return spans;
 }
 
-function replaySpansWithin(portion: ReplaySpan, spans: readonly ReplaySpan[]): ReplaySpan[] {
+export type ContinuationRow = {
+  id: number;
+  startMs: number;
+  endMs: number;
+  anchorAt: number;
+};
+
+/** Latest stored listen that this one continues, if the two starts are under a minute apart. */
+export function pickContinuation(
+  rows: readonly ContinuationRow[],
+  next: Pick<ListenPortion, 'startMs' | 'endMs' | 'sessionAt'>,
+): ContinuationRow | null {
+  const cutoff = next.sessionAt - SEQUENTIAL_START_GAP_MS;
+  let host: ContinuationRow | null = null;
+  for (const row of rows) {
+    if (row.anchorAt <= cutoff || row.anchorAt > next.sessionAt) {
+      continue;
+    }
+    if (!isSequentialContinuation(row.endMs, row.anchorAt, next)) {
+      continue;
+    }
+    if (!host || row.anchorAt >= host.anchorAt) {
+      host = row;
+    }
+  }
+  return host;
+}
+
+export function clipReplaySpans(portion: ReplaySpan, spans: readonly ReplaySpan[]): ReplaySpan[] {
   const hits: ReplaySpan[] = [];
   for (const span of spans) {
     if (span.startMs >= portion.endMs) {
@@ -317,7 +349,7 @@ export function aggregateSequentialPortions(portions: readonly ListenPortion[]):
     spansByItem.set(itemId, repeatedSections(merged));
   }
   for (const portion of aggregated) {
-    portion.replays = replaySpansWithin(portion, spansByItem.get(portion.itemId) ?? []);
+    portion.replays = clipReplaySpans(portion, spansByItem.get(portion.itemId) ?? []);
   }
   return aggregated;
 }

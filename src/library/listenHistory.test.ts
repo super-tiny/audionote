@@ -6,6 +6,7 @@ import {
   durationBand,
   filterProblem,
   importantSections,
+  pickContinuation,
   LONG_MIN_MS,
   parseMinutes,
   portionMatches,
@@ -153,7 +154,22 @@ test('a long chain stays one record while each hop starts within a minute', () =
   assert.equal(merged[0]?.startMs, 0);
   assert.equal(merged[0]?.endMs, 150_000);
   assert.equal(merged[0]?.sessionAt, 0);
+  assert.equal(merged[0]?.anchorAt, 29 * 30_000);
   assert.deepEqual(merged[0]?.replays, []);
+});
+
+test('picks the latest listen that the new pass continues', () => {
+  const rows = [
+    { id: 1, startMs: 0, endMs: 20_000, anchorAt: 0 },
+    { id: 2, startMs: 10_000, endMs: 20_000, anchorAt: 10_000 },
+    { id: 3, startMs: 10_000, endMs: 12_000, anchorAt: 5_000 },
+  ];
+  assert.equal(pickContinuation(rows, { startMs: 20_000, endMs: 30_000, sessionAt: 20_000 })?.id, 2);
+  assert.equal(
+    pickContinuation(rows, { startMs: 20_000, endMs: 30_000, sessionAt: 10_000 + SEQUENTIAL_START_GAP_MS }),
+    null,
+  );
+  assert.equal(pickContinuation(rows, { startMs: 10_000, endMs: 12_000, sessionAt: 15_000 }), null);
 });
 
 test('does not merge a skip, and absorbs only a small resume gap or rewind', () => {
