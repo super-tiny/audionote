@@ -13,7 +13,8 @@ import {
   markMissing,
   rangesForItem,
 } from '../db/library';
-import type { AudioItem, Jump, Note } from '../db/types';
+import type { AudioItem, Jump, Note, StoredRange } from '../db/types';
+import { importantSections } from '../library/listenHistory';
 import { listenedFraction, projectHeardRanges, type ListenRange } from '../library/ranges';
 import { locateAudioFile } from '../library/import';
 import { createId } from '../media/identity';
@@ -65,7 +66,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [notes, setNotes] = useState<Note[]>(() => listNotes(itemId));
   const [jumps, setJumps] = useState<Jump[]>(() => listJumps(itemId));
   const [jumpsOpen, setJumpsOpen] = useState(false);
-  const [heard, setHeard] = useState<ListenRange[]>(() => rangesForItem(itemId));
+  const [heard, setHeard] = useState<StoredRange[]>(() => rangesForItem(itemId));
   const [openListen, setOpenListen] = useState<ListenRange | null>(null);
   const [skips, setSkips] = useState(() => readSkips());
   const [speed, setSpeedState] = useState(item?.speed ?? 1);
@@ -252,6 +253,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     () => projectHeardRanges(heard, openListen, positionMs, playing && scrubMs == null),
     [heard, openListen, positionMs, playing, scrubMs],
   );
+  const important = useMemo(() => importantSections(heard), [heard]);
   const heardFraction = listenedFraction(visibleHeard, durationMs);
 
   if (!item) {
@@ -391,6 +393,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           durationMs={durationMs}
           positionMs={positionMs}
           heard={visibleHeard}
+          important={important}
           markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
           scrubMs={scrubMs}
           onScrub={setScrubMs}

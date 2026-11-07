@@ -17,6 +17,8 @@ type ScrubBarProps = {
   durationMs: number;
   positionMs: number;
   heard: readonly ListenRange[];
+  /** Spans the listener played more than once. */
+  important?: readonly ListenRange[];
   markers: readonly Marker[];
   onSeek: (positionMs: number, fromMs: number, source: ScrubSeekSource) => void;
   onScrub: (positionMs: number | null) => void;
@@ -37,6 +39,7 @@ export function ScrubBar({
   durationMs,
   positionMs,
   heard,
+  important = [],
   markers,
   onSeek,
   onScrub,
@@ -120,7 +123,11 @@ export function ScrubBar({
     <GestureDetector gesture={gesture}>
       <View
         accessibilityRole="adjustable"
-        accessibilityLabel="Playback position"
+        accessibilityLabel={
+          important.length > 0
+            ? 'Playback position. Highlighted sections were played more than once.'
+            : 'Playback position'
+        }
         style={styles.wrap}
         onLayout={(event) => {
           widthRef.current = Math.max(1, event.nativeEvent.layout.width);
@@ -145,6 +152,19 @@ export function ScrubBar({
               <View
                 key={`${range.startMs}-${range.endMs}`}
                 style={[styles.heard, { left: `${start}%`, width: `${Math.max(0.4, width)}%` }]}
+              />
+            );
+          })}
+          {important.map((range) => {
+            if (durationMs <= 0 || range.endMs <= range.startMs) {
+              return null;
+            }
+            const start = (range.startMs / durationMs) * 100;
+            const width = ((range.endMs - range.startMs) / durationMs) * 100;
+            return (
+              <View
+                key={`important-${range.startMs}-${range.endMs}`}
+                style={[styles.important, { left: `${start}%`, width: `${Math.max(0.6, width)}%` }]}
               />
             );
           })}
@@ -203,6 +223,13 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.heard,
+  },
+  important: {
+    position: 'absolute',
+    top: 11,
+    height: 12,
+    borderRadius: 4,
+    backgroundColor: colors.important,
   },
   marker: {
     position: 'absolute',

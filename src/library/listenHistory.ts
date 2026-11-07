@@ -1,6 +1,18 @@
 export const SHORT_MAX_MS = 60_000;
 export const LONG_MIN_MS = 10 * 60_000;
 
+/**
+ * Two listens merge only when the later one started less than a minute after the
+ * earlier one started. A morning pass and an evening pass stay separate.
+ */
+export const SEQUENTIAL_START_GAP_MS = 60_000;
+
+/**
+ * How far the next listen may miss the previous end and still be the following
+ * moment. A larger gap is a skip. A larger overlap is a replay and stays its own record.
+ */
+export const SEQUENTIAL_JOIN_MS = 1_000;
+
 export type DurationBand = 'short' | 'medium' | 'long';
 
 export type PortionFilter =
@@ -11,6 +23,11 @@ export type ListenSortKey = 'start' | 'duration' | 'listened';
 
 export type SortDirection = 'asc' | 'desc';
 
+export type ReplaySpan = {
+  startMs: number;
+  endMs: number;
+};
+
 export type ListenPortion = {
   id: number;
   itemId: string;
@@ -18,10 +35,12 @@ export type ListenPortion = {
   startMs: number;
   endMs: number;
   sessionAt: number;
+  /** Subspans also covered by another listen of the same lesson. */
+  replays?: readonly ReplaySpan[];
 };
 
 export const DURATION_FILTERS = [
-  { kind: 'all', label: 'All', hint: 'Every recorded portion' },
+  { kind: 'all', label: 'All', hint: 'Sequential passes that start within a minute are one portion' },
   { kind: 'short', label: 'Short', hint: 'Under 1 minute' },
   { kind: 'medium', label: 'Medium', hint: 'From 1 minute to under 10 minutes' },
   { kind: 'long', label: 'Long', hint: '10 minutes or longer' },
@@ -138,8 +157,170 @@ export function selectPortions(
   direction: SortDirection,
 ): ListenPortion[] {
   return sortPortions(
-    portions.filter((portion) => portionMatches(portionDurationMs(portion), filter)),
+    aggregateSequentialPortions(portions).filter((portion) => portionMatches(portionDurationMs(portion), filter)),
     key,
     direction,
+  );
+}
+
+type Continuation = {
+  endMs: number;
+  sessionAt: number;
+};
+
+/**
+ * The later listen picks up where the earlier one ended, and it started less than
+ * a minute after that earlier listen started. Replays and skipped gaps do not qualify.
+ */
+export function isSequentialContinuation(previous: Continuation, next: ListenPortion): boolean {
+  const gap = next.sessionAt - previous.sessionAt;
+  if (gap < 0 || gap >= SEQUENTIAL_START_GAP_MS) {
+    return false;
+  }
+  const join = next.startMs - previous.endMs;
+  if (join < -SEQUENTIAL_JOIN_MS || join > SEQUENTIAL_JOIN_MS) {
+    return false;
+  }
+  return next.endMs > previous.endMs;
+}
+
+type Draft = {
+  portion: ListenPortion;
+  /** Start time of the latest raw listen folded into this record. */
+  anchorAt: number;
+};
+
+function mergeSequentialGroup(group: readonly ListenPortion[]): ListenPortion[] {
+  const ordered = [...group].sort((left, right) => left.sessionAt - right.sessionAt || left.id - right.id);
+  const drafts: Draft[] = [];
+  for (const next of ordered) {
+    let host: Draft | null = null;
+    for (const candidate of drafts) {
+      if (
+        !isSequentialContinuation(
+          { endMs: candidate.portion.endMs, sessionAt: candidate.anchorAt },
+          next,
+        )
+      ) {
+        continue;
+      }
+      if (!host || candidate.anchorAt >= host.anchorAt) {
+        host = candidate;
+      }
+    }
+    if (!host) {
+      drafts.push({
+        portion: {
+          id: next.id,
+          itemId: next.itemId,
+          title: next.title,
+          startMs: next.startMs,
+          endMs: next.endMs,
+          sessionAt: next.sessionAt,
+        },
+        anchorAt: next.sessionAt,
+      });
+      continue;
+    }
+    host.portion = {
+      ...host.portion,
+      startMs: Math.min(host.portion.startMs, next.startMs),
+      endMs: Math.max(host.portion.endMs, next.endMs),
+    };
+    host.anchorAt = next.sessionAt;
+  }
+  return drafts.map((draft) => draft.portion);
+}
+
+/**
+ * Regions heard more than once. Ranges that only touch at an endpoint do not count.
+ */
+export function repeatedSections(ranges: readonly ReplaySpan[]): ReplaySpan[] {
+  const events: { at: number; delta: number }[] = [];
+  for (const range of ranges) {
+    if (!(range.endMs > range.startMs)) {
+      continue;
+    }
+    events.push({ at: range.startMs, delta: 1 });
+    events.push({ at: range.endMs, delta: -1 });
+  }
+  events.sort((left, right) => left.at - right.at || left.delta - right.delta);
+  const spans: ReplaySpan[] = [];
+  let depth = 0;
+  let openedAt: number | null = null;
+  for (const event of events) {
+    const nextDepth = depth + event.delta;
+    if (depth < 2 && nextDepth >= 2) {
+      openedAt = event.at;
+    } else if (depth >= 2 && nextDepth < 2 && openedAt != null && event.at > openedAt) {
+      const last = spans[spans.length - 1];
+      if (last && last.endMs >= openedAt) {
+        last.endMs = Math.max(last.endMs, event.at);
+      } else {
+        spans.push({ startMs: openedAt, endMs: event.at });
+      }
+      openedAt = null;
+    }
+    depth = nextDepth;
+  }
+  return spans;
+}
+
+function replaySpansWithin(portion: ReplaySpan, spans: readonly ReplaySpan[]): ReplaySpan[] {
+  const hits: ReplaySpan[] = [];
+  for (const span of spans) {
+    const startMs = Math.max(portion.startMs, span.startMs);
+    const endMs = Math.min(portion.endMs, span.endMs);
+    if (endMs > startMs) {
+      hits.push({ startMs, endMs });
+    }
+  }
+  return hits;
+}
+
+/**
+ * Collapse listens that follow each other within a minute into one record.
+ * A later listen that covers the same audio again stays, and the shared span is marked.
+ * Comparison uses each hop's own start time, so a chain of short pauses can merge
+ * even when the first and last starts are more than a minute apart.
+ */
+export function aggregateSequentialPortions(portions: readonly ListenPortion[]): ListenPortion[] {
+  const groups = new Map<string, ListenPortion[]>();
+  for (const portion of portions) {
+    const group = groups.get(portion.itemId);
+    if (group) {
+      group.push(portion);
+    } else {
+      groups.set(portion.itemId, [portion]);
+    }
+  }
+  const aggregated: ListenPortion[] = [];
+  const spansByItem = new Map<string, ReplaySpan[]>();
+  for (const [itemId, group] of groups) {
+    const merged = mergeSequentialGroup(group);
+    aggregated.push(...merged);
+    spansByItem.set(itemId, repeatedSections(merged));
+  }
+  return aggregated.map((portion) => ({
+    ...portion,
+    replays: replaySpansWithin(portion, spansByItem.get(portion.itemId) ?? []),
+  }));
+}
+
+/** Important sections for one lesson: audio that was played again, after sequential passes are combined. */
+export function importantSections(
+  ranges: readonly { startMs: number; endMs: number; sessionAt: number }[],
+): ReplaySpan[] {
+  return repeatedSections(
+    aggregateSequentialPortions(
+      ranges.map((range, index) => ({
+        id: index,
+        itemId: 'lesson',
+        title: '',
+        startMs: range.startMs,
+        endMs: range.endMs,
+        sessionAt: range.sessionAt,
+      })),
+    ),
   );
 }

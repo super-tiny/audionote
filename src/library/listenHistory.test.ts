@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  aggregateSequentialPortions,
   durationBand,
   filterProblem,
+  importantSections,
   LONG_MIN_MS,
   parseMinutes,
   portionMatches,
   selectPortions,
+  SEQUENTIAL_START_GAP_MS,
   SHORT_MAX_MS,
   type ListenPortion,
 } from './listenHistory.ts';
@@ -59,6 +62,196 @@ test('rejects an invalid custom range and a minimum above the maximum', () => {
   assert.deepEqual(parseMinutes(''), { ms: null, invalid: false });
   assert.deepEqual(parseMinutes('1.5'), { ms: 90_000, invalid: false });
   assert.deepEqual(parseMinutes('1.5m'), { ms: null, invalid: true });
+});
+
+test('merges listens that continue within a minute and keeps the first start', () => {
+  const merged = aggregateSequentialPortions([
+    portion(1, 10_000, 15_000, 1_000),
+    portion(2, 15_000, 20_000, 1_000 + 20_000),
+  ]);
+  assert.deepEqual(
+    merged.map((entry) => ({
+      id: entry.id,
+      startMs: entry.startMs,
+      endMs: entry.endMs,
+      sessionAt: entry.sessionAt,
+      replays: entry.replays,
+    })),
+    [{ id: 1, startMs: 10_000, endMs: 20_000, sessionAt: 1_000, replays: [] }],
+  );
+});
+
+test('keeps a later continuation separate once the start times are a minute apart', () => {
+  const morning = 1_000;
+  const evening = morning + 8 * 60 * 60_000;
+  const apart = aggregateSequentialPortions([
+    portion(1, 10_000, 15_000, morning),
+    portion(2, 15_000, 20_000, evening),
+  ]);
+  assert.deepEqual(
+    apart.map((entry) => entry.id),
+    [1, 2],
+  );
+  assert.deepEqual(apart[0]?.replays, []);
+  assert.deepEqual(apart[1]?.replays, []);
+
+  const exactMinute = aggregateSequentialPortions([
+    portion(1, 10_000, 15_000, 0),
+    portion(2, 15_000, 20_000, SEQUENTIAL_START_GAP_MS),
+  ]);
+  assert.deepEqual(
+    exactMinute.map((entry) => [entry.id, entry.endMs]),
+    [
+      [1, 15_000],
+      [2, 20_000],
+    ],
+  );
+
+  const justInside = aggregateSequentialPortions([
+    portion(1, 10_000, 15_000, 0),
+    portion(2, 15_000, 20_000, SEQUENTIAL_START_GAP_MS - 1),
+  ]);
+  assert.equal(justInside.length, 1);
+  assert.equal(justInside[0]?.endMs, 20_000);
+});
+
+test('a chain uses each hop’s own start, so the whole pass can run past one minute', () => {
+  const merged = aggregateSequentialPortions([
+    portion(1, 0, 10_000, 0),
+    portion(2, 10_000, 20_000, 50_000),
+    portion(3, 20_000, 30_000, 100_000),
+  ]);
+  assert.deepEqual(
+    merged.map((entry) => ({ id: entry.id, startMs: entry.startMs, endMs: entry.endMs, sessionAt: entry.sessionAt })),
+    [{ id: 1, startMs: 0, endMs: 30_000, sessionAt: 0 }],
+  );
+
+  const broken = aggregateSequentialPortions([
+    portion(1, 0, 10_000, 0),
+    portion(2, 10_000, 20_000, 50_000),
+    portion(3, 20_000, 30_000, 50_000 + SEQUENTIAL_START_GAP_MS),
+  ]);
+  assert.deepEqual(
+    broken.map((entry) => [entry.id, entry.startMs, entry.endMs]),
+    [
+      [1, 0, 20_000],
+      [3, 20_000, 30_000],
+    ],
+  );
+});
+
+test('does not merge a skip, and absorbs only a small resume gap or rewind', () => {
+  const skipped = aggregateSequentialPortions([
+    portion(1, 10_000, 15_000, 0),
+    portion(2, 17_000, 22_000, 10_000),
+  ]);
+  assert.deepEqual(
+    skipped.map((entry) => [entry.id, entry.startMs, entry.endMs]),
+    [
+      [1, 10_000, 15_000],
+      [2, 17_000, 22_000],
+    ],
+  );
+
+  const jitter = aggregateSequentialPortions([
+    portion(1, 10_000, 15_000, 0),
+    portion(2, 15_500, 20_000, 10_000),
+    portion(3, 30_000, 35_000, 20_000),
+    portion(4, 34_200, 40_000, 30_000),
+  ]);
+  assert.deepEqual(
+    jitter.map((entry) => [entry.id, entry.startMs, entry.endMs, entry.replays]),
+    [
+      [1, 10_000, 20_000, []],
+      [3, 30_000, 40_000, []],
+    ],
+  );
+});
+
+test('keeps repeated listens and marks the shared span as important', () => {
+  const replayed = aggregateSequentialPortions([
+    portion(1, 10_000, 15_000, 0),
+    portion(2, 10_000, 12_000, 30_000),
+  ]);
+  assert.deepEqual(
+    replayed.map((entry) => ({
+      id: entry.id,
+      startMs: entry.startMs,
+      endMs: entry.endMs,
+      replays: entry.replays,
+    })),
+    [
+      { id: 1, startMs: 10_000, endMs: 15_000, replays: [{ startMs: 10_000, endMs: 12_000 }] },
+      { id: 2, startMs: 10_000, endMs: 12_000, replays: [{ startMs: 10_000, endMs: 12_000 }] },
+    ],
+  );
+  assert.deepEqual(
+    importantSections([
+      { startMs: 10_000, endMs: 15_000, sessionAt: 0 },
+      { startMs: 15_000, endMs: 20_000, sessionAt: 20_000 },
+      { startMs: 10_000, endMs: 12_000, sessionAt: 30_000 },
+    ]),
+    [{ startMs: 10_000, endMs: 12_000 }],
+  );
+});
+
+test('a replay between two sequential parts stays, and the continuation still joins the pass it follows', () => {
+  const between = aggregateSequentialPortions([
+    portion(1, 10_000, 15_000, 0),
+    portion(2, 10_000, 12_000, 10_000),
+    portion(3, 15_000, 20_000, 20_000),
+  ]);
+  assert.deepEqual(
+    between.map((entry) => ({ id: entry.id, startMs: entry.startMs, endMs: entry.endMs, replays: entry.replays })),
+    [
+      { id: 1, startMs: 10_000, endMs: 20_000, replays: [{ startMs: 10_000, endMs: 12_000 }] },
+      { id: 2, startMs: 10_000, endMs: 12_000, replays: [{ startMs: 10_000, endMs: 12_000 }] },
+    ],
+  );
+
+  const extendedReplay = aggregateSequentialPortions([
+    portion(1, 0, 20_000, 0),
+    portion(2, 10_000, 20_000, 10_000),
+    portion(3, 20_000, 30_000, 20_000),
+  ]);
+  assert.deepEqual(
+    extendedReplay.map((entry) => ({ id: entry.id, startMs: entry.startMs, endMs: entry.endMs, replays: entry.replays })),
+    [
+      { id: 1, startMs: 0, endMs: 20_000, replays: [{ startMs: 10_000, endMs: 20_000 }] },
+      { id: 2, startMs: 10_000, endMs: 30_000, replays: [{ startMs: 10_000, endMs: 20_000 }] },
+    ],
+  );
+});
+
+test('does not merge or mark replays across lessons', () => {
+  const first = portion(1, 10_000, 15_000, 0);
+  const second = { ...portion(2, 15_000, 20_000, 10_000), itemId: 'other' };
+  const merged = aggregateSequentialPortions([first, second]);
+  assert.deepEqual(
+    merged.map((entry) => entry.itemId),
+    ['lesson', 'other'],
+  );
+  assert.deepEqual(merged[0]?.replays, []);
+});
+
+test('filters and sorts the merged portion, while a replay keeps its own length', () => {
+  const passes = [
+    portion(1, 0, 50_000, 0),
+    portion(2, 50_000, 130_000, 50_000),
+    portion(3, 0, 10_000, 80_000),
+  ];
+  assert.deepEqual(
+    selectPortions(passes, { kind: 'short' }, 'start', 'asc').map((entry) => entry.id),
+    [3],
+  );
+  assert.deepEqual(
+    selectPortions(passes, { kind: 'medium' }, 'start', 'asc').map((entry) => [entry.id, entry.endMs]),
+    [[1, 130_000]],
+  );
+  const short = selectPortions(passes, { kind: 'short' }, 'start', 'asc');
+  assert.deepEqual(short[0]?.replays, [{ startMs: 0, endMs: 10_000 }]);
+  const medium = selectPortions(passes, { kind: 'medium' }, 'duration', 'desc');
+  assert.deepEqual(medium[0]?.replays, [{ startMs: 0, endMs: 10_000 }]);
 });
 
 test('sorts by start, length, or when the portion was heard', () => {

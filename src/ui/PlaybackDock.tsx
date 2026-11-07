@@ -24,6 +24,7 @@ type PlaybackDockBase = {
 type PlaybackDockFullProps = PlaybackDockBase & {
   variant: 'full';
   heard: readonly ListenRange[];
+  important?: readonly ListenRange[];
   markers: readonly Marker[];
   scrubMs: number | null;
   onScrub: (positionMs: number | null) => void;
@@ -102,12 +103,16 @@ export function PlaybackDock(props: PlaybackDockProps) {
         durationMs={props.durationMs}
         positionMs={props.scrubMs ?? props.positionMs}
         heard={props.heard}
+        important={props.important}
         markers={props.markers}
         onSeek={props.onSeek}
         onScrub={props.onScrub}
         onScrubPreview={props.onScrubPreview}
         onScrubCancel={props.onScrubCancel}
       />
+      {props.important && props.important.length > 0 ? (
+        <Text style={styles.importantHint}>Highlighted sections were played more than once</Text>
+      ) : null}
       <View style={styles.times}>
         <Text style={styles.time}>{formatClock(props.scrubMs ?? props.positionMs)}</Text>
         {props.onOpenJumps ? (
@@ -156,6 +161,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
     gap: spacing.xs,
+  },
+  importantHint: {
+    color: colors.important,
+    fontSize: 12,
+    fontWeight: '700',
   },
   times: {
     flexDirection: 'row',

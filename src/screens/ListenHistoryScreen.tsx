@@ -255,16 +255,25 @@ function PortionRow({
   const start = formatClock(portion.startMs);
   const end = formatClock(portion.endMs);
   const length = formatClock(durationMs);
+  const replays = portion.replays ?? [];
+  const replayLabel = replays
+    .map((span) => `${formatClock(span.startMs)}–${formatClock(span.endMs)}`)
+    .join(', ');
   return (
     <AppPressable
       accessibilityRole="button"
-      accessibilityLabel={`${displayTitle(portion.title)}. ${bandLabel} portion from ${start} to ${end}, length ${length}. Play from the start.`}
+      accessibilityLabel={`${displayTitle(portion.title)}. ${bandLabel} portion from ${start} to ${end}, length ${length}.${
+        replays.length > 0 ? ` Important. Played again ${replayLabel}.` : ''
+      } Play from the start.`}
       haptic
       onPress={onPress}
-      style={styles.card}
+      style={[styles.card, replays.length > 0 && styles.cardImportant]}
     >
       <View style={styles.cardTop}>
-        <Text style={[styles.badge, { color: BAND_COLOR[band] }]}>{bandLabel}</Text>
+        <View style={styles.badges}>
+          <Text style={[styles.badge, { color: BAND_COLOR[band] }]}>{bandLabel}</Text>
+          {replays.length > 0 ? <Text style={styles.importantBadge}>Important</Text> : null}
+        </View>
         <Text style={styles.length}>{length}</Text>
       </View>
       {showTitle ? (
@@ -280,6 +289,7 @@ function PortionRow({
       <View style={styles.meterTrack}>
         <View style={[styles.meterFill, { width: `${Math.max(meter * 100, 6)}%`, backgroundColor: BAND_COLOR[band] }]} />
       </View>
+      {replays.length > 0 ? <Text style={styles.replay}>Played again {replayLabel}</Text> : null}
       <Text style={styles.when}>Heard {formatListenedAt(portion.sessionAt)}</Text>
     </AppPressable>
   );
@@ -402,12 +412,28 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
   },
+  cardImportant: {
+    borderColor: colors.important,
+  },
   cardTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  badges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 1,
   },
   badge: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  importantBadge: {
+    color: colors.important,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.2,
@@ -453,6 +479,12 @@ const styles = StyleSheet.create({
   meterFill: {
     height: 6,
     borderRadius: 3,
+  },
+  replay: {
+    color: colors.important,
+    fontSize: 13,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   when: {
     color: colors.muted,
