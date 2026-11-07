@@ -8,6 +8,7 @@ export const colors = {
   accent: '#7EB6FF',
   accentSoft: 'rgba(126, 182, 255, 0.16)',
   heard: '#4E86B8',
+  important: '#E7B549',
   danger: '#F0A4A4',
   line: '#2C3B4C',
   white: '#FFFFFF',
