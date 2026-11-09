@@ -34,6 +34,9 @@ type PlaybackDockFullProps = PlaybackDockBase & {
   jumpsCount?: number;
   onOpenJumps?: () => void;
   onOpenSettings: () => void;
+  importantHintHidden?: boolean;
+  onDismissImportantHint?: () => void;
+  onShowImportantHint?: () => void;
 };
 
 type PlaybackDockMiniProps = {
@@ -110,8 +113,30 @@ export function PlaybackDock(props: PlaybackDockProps) {
         onScrubPreview={props.onScrubPreview}
         onScrubCancel={props.onScrubCancel}
       />
-      {props.important && props.important.length > 0 ? (
-        <Text style={styles.importantHint}>Highlighted sections were played more than once</Text>
+      {props.important && props.important.length > 0 && !props.importantHintHidden ? (
+        <View style={styles.importantHintRow}>
+          <Text style={styles.importantHint}>Highlighted sections were played more than once</Text>
+          {props.onDismissImportantHint ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Hide highlight hint"
+              hitSlop={8}
+              onPress={props.onDismissImportantHint}
+              style={styles.importantHintClose}
+            >
+              <Ionicons name="close" size={18} color={colors.muted} />
+            </Pressable>
+          ) : null}
+        </View>
+      ) : props.important && props.important.length > 0 && props.importantHintHidden && props.onShowImportantHint ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Show highlight hint"
+          onPress={props.onShowImportantHint}
+          style={styles.importantHintShow}
+        >
+          <Text style={styles.importantHintShowText}>Show highlight hint</Text>
+        </Pressable>
       ) : null}
       <View style={styles.times}>
         <Text style={styles.time}>{formatClock(props.scrubMs ?? props.positionMs)}</Text>
@@ -162,10 +187,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     gap: spacing.xs,
   },
+  importantHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   importantHint: {
+    flex: 1,
     color: colors.important,
     fontSize: 12,
     fontWeight: '700',
+  },
+  importantHintClose: {
+    minWidth: 32,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  importantHintShow: {
+    alignSelf: 'flex-start',
+    minHeight: 28,
+    justifyContent: 'center',
+  },
+  importantHintShowText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   times: {
     flexDirection: 'row',

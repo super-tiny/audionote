@@ -39,6 +39,7 @@ import {
   subscribeJumpHistory,
 } from '../playback/jumpHistory';
 import type { RecordedJumpSource } from '../playback/jumpRecord';
+import { isHighlightHintHidden, setHighlightHintHidden } from '../playback/highlightHint';
 import { currentOpenListen, subscribeListenProgress } from '../playback/persist';
 import { resetItemPlayback } from '../playback/resetItem';
 import { AppPressable } from '../ui/AppPressable';
@@ -82,7 +83,18 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [message, setMessage] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [highlightHintHidden, setHighlightHintHiddenState] = useState(() => isHighlightHintHidden());
   const loopGuard = useRef(false);
+
+  function dismissHighlightHint(): void {
+    setHighlightHintHidden(true);
+    setHighlightHintHiddenState(true);
+  }
+
+  function showHighlightHint(): void {
+    setHighlightHintHidden(false);
+    setHighlightHintHiddenState(false);
+  }
 
   useEffect(() => {
     onPlayerContext(itemId, item?.title ?? null);
@@ -422,6 +434,9 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             setJumpsOpen(true);
           }}
           onOpenSettings={() => setSettingsOpen(true)}
+          importantHintHidden={highlightHintHidden}
+          onDismissImportantHint={dismissHighlightHint}
+          onShowImportantHint={showHighlightHint}
         />
         <PlaybackSettingsSheet
           visible={settingsOpen}
