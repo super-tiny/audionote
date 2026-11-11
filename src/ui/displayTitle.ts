@@ -6,8 +6,8 @@ function isOpaqueId(title: string): boolean {
 }
 
 /** Shortens cryptic import names while keeping human titles readable. */
-export function displayTitle(title: string, maxLength = 44): string {
-  const trimmed = title.trim() || 'Untitled';
+export function displayTitle(title: string, maxLength = 44, untitled = 'Untitled'): string {
+  const trimmed = title.trim() || untitled;
   if (isOpaqueId(trimmed) && trimmed.length > 24) {
     return `${trimmed.slice(0, 16)}…${trimmed.slice(-12)}`;
   }

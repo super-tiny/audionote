@@ -2,7 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useI18n } from '../i18n/I18nProvider';
 import { AppPressable } from './AppPressable';
+import { directionalIcon } from './direction';
 import { colors, radii, spacing } from './theme';
 
 export type NavigationMenuItem = {
@@ -21,14 +23,16 @@ type NavigationMenuProps = {
 
 export function NavigationMenu({ visible, onClose, items }: NavigationMenuProps) {
   const insets = useSafeAreaInsets();
+  const { t, direction, isRtl, align } = useI18n();
 
   return (
     <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close menu" />
+      <View style={[styles.fill, { direction }]}>
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('closeMenu')} />
       <View style={[styles.panel, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}>
         <View style={styles.panelHeader}>
-          <Text style={styles.panelTitle}>Menu</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose}>
+          <Text style={[styles.panelTitle, align]}>{t('menu')}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('closeMenu')} onPress={onClose}>
             <Ionicons name="close" size={24} color={colors.muted} />
           </Pressable>
         </View>
@@ -46,18 +50,22 @@ export function NavigationMenu({ visible, onClose, items }: NavigationMenuProps)
           >
             <Ionicons name={item.icon} size={22} color={item.disabled ? colors.line : colors.accent} />
             <View style={styles.itemText}>
-              <Text style={[styles.itemLabel, item.disabled && styles.itemLabelDisabled]}>{item.label}</Text>
-              {item.detail ? <Text style={styles.itemDetail}>{item.detail}</Text> : null}
+              <Text style={[styles.itemLabel, align, item.disabled && styles.itemLabelDisabled]}>{item.label}</Text>
+              {item.detail ? <Text style={[styles.itemDetail, align]}>{item.detail}</Text> : null}
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+            <Ionicons name={directionalIcon('chevron-forward', isRtl)} size={18} color={colors.muted} />
           </AppPressable>
         ))}
+      </View>
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+  },
   backdrop: {
     ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
@@ -67,10 +75,11 @@ const styles = StyleSheet.create({
     maxWidth: 320,
     height: '100%',
     backgroundColor: colors.surface,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: colors.line,
+    alignSelf: 'flex-start',
     paddingHorizontal: spacing.lg,
     gap: spacing.sm,
+    borderEndWidth: StyleSheet.hairlineWidth,
+    borderEndColor: colors.line,
   },
   panelHeader: {
     flexDirection: 'row',

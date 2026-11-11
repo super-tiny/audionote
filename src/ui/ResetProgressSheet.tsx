@@ -2,6 +2,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { displayTitle } from './displayTitle';
+import { useI18n } from '../i18n/I18nProvider';
 import { colors, radii, spacing } from './theme';
 
 type ResetProgressSheetProps = {
@@ -13,30 +14,28 @@ type ResetProgressSheetProps = {
 
 export function ResetProgressSheet({ visible, title, onCancel, onConfirm }: ResetProgressSheetProps) {
   const insets = useSafeAreaInsets();
-  const lesson = displayTitle(title, 48);
+  const { t, direction, align } = useI18n();
+  const lesson = displayTitle(title, 48, t('untitled'));
 
   return (
     <Modal animationType="fade" transparent visible={visible} onRequestClose={onCancel}>
-      <View style={styles.fill}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Cancel reset" onPress={onCancel} style={styles.backdrop} />
+      <View style={[styles.fill, { direction }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('cancelReset')} onPress={onCancel} style={styles.backdrop} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
-          <Text style={styles.title}>Reset playback progress?</Text>
-          <Text style={styles.lesson}>{lesson}</Text>
-          <Text style={styles.body}>
-            Listened portions, resume position, and jump history go back to the start. The heard percentage returns to
-            0%. Notes stay exactly as they are.
-          </Text>
+          <Text style={[styles.title, align]}>{t('resetQuestion')}</Text>
+          <Text style={[styles.lesson, align]}>{lesson}</Text>
+          <Text style={[styles.body, align]}>{t('resetBody')}</Text>
           <View style={styles.actions}>
             <Pressable accessibilityRole="button" onPress={onCancel} style={styles.cancel}>
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={styles.cancelText}>{t('cancel')}</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Reset playback progress for ${lesson}. Notes stay.`}
+              accessibilityLabel={t('resetConfirmA11y', { title: lesson })}
               onPress={onConfirm}
               style={styles.confirm}
             >
-              <Text style={styles.confirmText}>Reset progress</Text>
+              <Text style={styles.confirmText}>{t('resetProgress')}</Text>
             </Pressable>
           </View>
         </View>

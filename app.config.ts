@@ -59,6 +59,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     'expo-dev-client',
     'expo-sqlite',
+    'expo-status-bar',
     [
       'expo-build-properties',
       {

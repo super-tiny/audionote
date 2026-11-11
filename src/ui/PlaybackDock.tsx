@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ListenRange } from '../library/ranges';
-import { formatClock } from '../notes/capture';
+import { useI18n } from '../i18n/I18nProvider';
 import { readSkips, skipBy, togglePlayback } from '../playback/engine';
 import { AppPressable } from './AppPressable';
 import { ArtworkAvatar } from './ArtworkAvatar';
@@ -47,13 +47,9 @@ type PlaybackDockMiniProps = {
 
 export type PlaybackDockProps = PlaybackDockFullProps | PlaybackDockMiniProps;
 
-export function PlaybackDock(props: PlaybackDockProps) {
+function useTransport() {
   const playing = useIsPlaying();
-  const progress = useProgress(0.5);
-  const insets = useSafeAreaInsets();
   const skips = readSkips();
-  const miniDurationMs = Math.max(0, progress.duration * 1000);
-  const miniPositionMs = progress.position * 1000;
 
   function onPlayPause(): void {
     actionHaptic();
@@ -70,35 +66,50 @@ export function PlaybackDock(props: PlaybackDockProps) {
     skipBy(skips.forwardMs);
   }
 
-  if (props.variant === 'mini') {
-    return (
-      <View style={[styles.miniWrap, elevation.card, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-        <Pressable accessibilityRole="button" onPress={props.onOpen} style={styles.miniMain}>
-          <ArtworkAvatar title={props.title} size={44} />
-          <View style={styles.miniMeta}>
-            <Text numberOfLines={1} style={styles.miniTitle}>
-              {displayTitle(props.title, 40)}
-            </Text>
-            <Text style={styles.miniTime}>
-              {formatClock(miniPositionMs)}
-              {miniDurationMs ? ` / ${formatClock(miniDurationMs)}` : ''}
-            </Text>
-          </View>
-        </Pressable>
-        <View style={styles.miniControls}>
-          <AppPressable accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`} haptic onPress={onSkipBack} style={styles.controlBtn}>
-            <Ionicons name="play-back" size={26} color={colors.text} />
-          </AppPressable>
-          <AppPressable accessibilityLabel={playing ? 'Pause' : 'Play'} haptic onPress={onPlayPause} style={styles.playBtn}>
-            <Ionicons name={playing ? 'pause' : 'play'} size={26} color={colors.background} />
-          </AppPressable>
-          <AppPressable accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`} haptic onPress={onSkipForward} style={styles.controlBtn}>
-            <Ionicons name="play-forward" size={26} color={colors.text} />
-          </AppPressable>
+  return { playing, skips, onPlayPause, onSkipBack, onSkipForward };
+}
+
+function MiniPlaybackDock({ title, onOpen }: { title: string; onOpen: () => void }) {
+  const progress = useProgress(1);
+  const insets = useSafeAreaInsets();
+  const { playing, skips, onPlayPause, onSkipBack, onSkipForward } = useTransport();
+  const { t, clock, align } = useI18n();
+  const miniDurationMs = Math.max(0, progress.duration * 1000);
+  const miniPositionMs = progress.position * 1000;
+
+  return (
+    <View style={[styles.miniWrap, elevation.card, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <Pressable accessibilityRole="button" onPress={onOpen} style={styles.miniMain}>
+        <ArtworkAvatar title={title} size={44} />
+        <View style={styles.miniMeta}>
+          <Text numberOfLines={1} style={[styles.miniTitle, align]}>
+            {displayTitle(title, 40, t('untitled'))}
+          </Text>
+          <Text style={[styles.miniTime, align]}>
+            {clock(miniPositionMs)}
+            {miniDurationMs ? ` / ${clock(miniDurationMs)}` : ''}
+          </Text>
         </View>
+      </Pressable>
+      <View style={styles.miniControls}>
+        <AppPressable accessibilityLabel={t('rewindSeconds', { count: Math.round(skips.backMs / 1000) })} haptic onPress={onSkipBack} style={styles.controlBtn}>
+          <Ionicons name="play-back" size={26} color={colors.text} />
+        </AppPressable>
+        <AppPressable accessibilityLabel={playing ? t('pause') : t('play')} haptic onPress={onPlayPause} style={styles.playBtn}>
+          <Ionicons name={playing ? 'pause' : 'play'} size={26} color={colors.background} />
+        </AppPressable>
+        <AppPressable accessibilityLabel={t('skipForwardSeconds', { count: Math.round(skips.forwardMs / 1000) })} haptic onPress={onSkipForward} style={styles.controlBtn}>
+          <Ionicons name="play-forward" size={26} color={colors.text} />
+        </AppPressable>
       </View>
-    );
-  }
+    </View>
+  );
+}
+
+function FullPlaybackDock(props: PlaybackDockFullProps) {
+  const insets = useSafeAreaInsets();
+  const { playing, skips, onPlayPause, onSkipBack, onSkipForward } = useTransport();
+  const { t, clock, isRtl } = useI18n();
 
   return (
     <View style={[styles.fullWrap, elevation.card, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
@@ -115,11 +126,11 @@ export function PlaybackDock(props: PlaybackDockProps) {
       />
       {props.important && props.important.length > 0 && !props.importantHintHidden ? (
         <View style={styles.importantHintRow}>
-          <Text style={styles.importantHint}>Highlighted sections were played more than once</Text>
+          <Text style={[styles.importantHint, isRtl && styles.importantHintRtl]}>{t('highlightHint')}</Text>
           {props.onDismissImportantHint ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Hide highlight hint"
+              accessibilityLabel={t('hideHighlightHint')}
               hitSlop={8}
               onPress={props.onDismissImportantHint}
               style={styles.importantHintClose}
@@ -131,46 +142,46 @@ export function PlaybackDock(props: PlaybackDockProps) {
       ) : props.important && props.important.length > 0 && props.importantHintHidden && props.onShowImportantHint ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Show highlight hint"
+          accessibilityLabel={t('showHighlightHint')}
           onPress={props.onShowImportantHint}
-          style={styles.importantHintShow}
+          style={[styles.importantHintShow, isRtl && styles.importantHintShowRtl]}
         >
-          <Text style={styles.importantHintShowText}>Show highlight hint</Text>
+          <Text style={[styles.importantHintShowText, isRtl && styles.importantHintRtl]}>{t('showHighlightHint')}</Text>
         </Pressable>
       ) : null}
       <View style={styles.times}>
-        <Text style={styles.time}>{formatClock(props.scrubMs ?? props.positionMs)}</Text>
+        <Text style={styles.time}>{clock(props.scrubMs ?? props.positionMs)}</Text>
         {props.onOpenJumps ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={props.jumpsCount ? `Jumps, ${props.jumpsCount}` : 'Jumps'}
-            accessibilityHint="Opens positions you can return to"
+            accessibilityLabel={props.jumpsCount ? t('jumpsWithCount', { count: props.jumpsCount }) : t('jumps')}
+            accessibilityHint={t('jumpsHint')}
             onPress={props.onOpenJumps}
             style={styles.jumpsButton}
           >
             <Ionicons name="time-outline" size={15} color={props.jumpsCount ? colors.accent : colors.muted} />
             <Text style={[styles.jumpsLabel, props.jumpsCount ? styles.jumpsLabelOn : null]}>
-              Jumps{props.jumpsCount ? ` ${props.jumpsCount}` : ''}
+              {props.jumpsCount ? t('jumpsLabelCount', { count: props.jumpsCount }) : t('jumps')}
             </Text>
           </Pressable>
         ) : null}
-        <Text style={styles.time}>{props.durationMs ? formatClock(props.durationMs) : '—'}</Text>
+        <Text style={styles.time}>{props.durationMs ? clock(props.durationMs) : '—'}</Text>
       </View>
       <View style={styles.fullControls}>
         <View style={styles.fullControlsSides}>
-          <AppPressable accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`} haptic onPress={onSkipBack} style={styles.controlBtn}>
+          <AppPressable accessibilityLabel={t('rewindSeconds', { count: Math.round(skips.backMs / 1000) })} haptic onPress={onSkipBack} style={styles.controlBtn}>
             <Ionicons name="play-back" size={30} color={colors.text} />
           </AppPressable>
           <View style={styles.fullControlsRight}>
-            <AppPressable accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`} haptic onPress={onSkipForward} style={styles.controlBtn}>
+            <AppPressable accessibilityLabel={t('skipForwardSeconds', { count: Math.round(skips.forwardMs / 1000) })} haptic onPress={onSkipForward} style={styles.controlBtn}>
               <Ionicons name="play-forward" size={30} color={colors.text} />
             </AppPressable>
-            <AppPressable accessibilityLabel="Playback settings" haptic onPress={props.onOpenSettings} style={styles.settingsBtn}>
+            <AppPressable accessibilityLabel={t('playbackSettings')} haptic onPress={props.onOpenSettings} style={styles.settingsBtn}>
               <Ionicons name="settings-outline" size={24} color={colors.text} />
             </AppPressable>
           </View>
         </View>
-        <AppPressable accessibilityLabel={playing ? 'Pause' : 'Play'} haptic onPress={onPlayPause} style={styles.playBtnLarge}>
+        <AppPressable accessibilityLabel={playing ? t('pause') : t('play')} haptic onPress={onPlayPause} style={styles.playBtnLarge}>
           <Ionicons name={playing ? 'pause' : 'play'} size={32} color={colors.background} />
         </AppPressable>
       </View>
@@ -178,8 +189,16 @@ export function PlaybackDock(props: PlaybackDockProps) {
   );
 }
 
+export function PlaybackDock(props: PlaybackDockProps) {
+  if (props.variant === 'mini') {
+    return <MiniPlaybackDock title={props.title} onOpen={props.onOpen} />;
+  }
+  return <FullPlaybackDock {...props} />;
+}
+
 const styles = StyleSheet.create({
   fullWrap: {
+    direction: 'ltr',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.line,
     backgroundColor: colors.surface,
@@ -198,6 +217,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  // The full dock is forced LTR, so `right` stays the physical right edge.
+  importantHintRtl: {
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   importantHintClose: {
     minWidth: 32,
     minHeight: 32,
@@ -208,6 +232,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     minHeight: 28,
     justifyContent: 'center',
+  },
+  importantHintShowRtl: {
+    alignSelf: 'flex-end',
   },
   importantHintShowText: {
     color: colors.muted,
@@ -261,6 +288,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   miniControls: {
+    direction: 'ltr',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,

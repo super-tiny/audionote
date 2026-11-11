@@ -2,6 +2,8 @@ import TrackPlayer, { PlayerCommand } from '@rntp/player';
 
 import { getSetting, savePlayback, setSetting } from '../db/library';
 import type { AudioItem } from '../db/types';
+import { parseLocale } from '../i18n/languages';
+import { messages } from '../i18n/messages';
 import { releaseItem, resolveItemUri } from '../library/files';
 import { flushJumpHistory } from './jumpHistory';
 import { flushProgress } from './persist';
@@ -67,7 +69,7 @@ export async function openItem(item: AudioItem): Promise<boolean> {
       mediaId: item.id,
       url: uri,
       title: item.title,
-      artist: 'AudioNote',
+      artist: messages[parseLocale(getSetting('locale')) ?? 'en'].appName,
       mimeType: item.format === 'mp3' ? 'audio/mpeg' : item.format === 'm4a' ? 'audio/mp4' : undefined,
       duration: item.durationMs ? item.durationMs / 1000 : undefined,
     });

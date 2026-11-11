@@ -6,6 +6,7 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useCallback, useState } from 'react';
 
+import { useI18n } from '../i18n/I18nProvider';
 import { LibraryScreen } from '../screens/LibraryScreen';
 import { ListenHistoryScreen } from '../screens/ListenHistoryScreen';
 import { PlayerScreen } from '../screens/PlayerScreen';
@@ -28,6 +29,7 @@ const navigationTheme = {
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 export function RootNavigator() {
+  const { isRtl } = useI18n();
   const [playerItemId, setPlayerItemId] = useState<string | null>(null);
   const [playerTitle, setPlayerTitle] = useState<string | null>(null);
 
@@ -51,7 +53,7 @@ export function RootNavigator() {
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          animation: 'slide_from_right',
+          animation: isRtl ? 'slide_from_left' : 'slide_from_right',
           contentStyle: { backgroundColor: colors.surface },
         }}
       >

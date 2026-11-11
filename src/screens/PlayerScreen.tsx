@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useIsPlaying, useProgress } from '@rntp/player';
+import { useEffect, useRef, useState } from 'react';
+import TrackPlayer from '@rntp/player';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { clearJumps, deleteJump, listJumps } from '../db/jumps';
@@ -15,12 +15,12 @@ import {
   rangesForItem,
   subscribeListenMarks,
 } from '../db/library';
-import type { AudioItem, Jump, Note, StoredRange } from '../db/types';
+import type { AudioItem, Jump, Note } from '../db/types';
 import type { ReplaySpan } from '../library/listenHistory';
 import { listenedFraction, projectHeardRanges, type ListenRange } from '../library/ranges';
 import { locateAudioFile } from '../library/import';
 import { createId } from '../media/identity';
-import { formatClock, notePositionMs } from '../notes/capture';
+import { notePositionMs } from '../notes/capture';
 import type { RootStackParamList } from '../navigation/types';
 import {
   openItem,
@@ -40,14 +40,17 @@ import {
 } from '../playback/jumpHistory';
 import type { RecordedJumpSource } from '../playback/jumpRecord';
 import { isHighlightHintHidden, setHighlightHintHidden } from '../playback/highlightHint';
+import { PlayerClockProvider, usePlayerClock } from '../playback/PlayerClock';
 import { currentOpenListen, subscribeListenProgress } from '../playback/persist';
 import { resetItemPlayback } from '../playback/resetItem';
+import { useI18n } from '../i18n/I18nProvider';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
 import { displayTitle } from '../ui/displayTitle';
 import { InlineBanner } from '../ui/InlineBanner';
 import { JumpHistorySheet } from '../ui/JumpHistorySheet';
 import { PlaybackDock } from '../ui/PlaybackDock';
+import type { ScrubSeekSource } from '../ui/ScrubBar';
 import { PlaybackSettingsSheet, type LoopPoints } from '../ui/PlaybackSettingsSheet';
 import { ResetProgressSheet } from '../ui/ResetProgressSheet';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
@@ -61,17 +64,158 @@ type PlayerScreenProps = NativeStackScreenProps<RootStackParamList, 'Player'> & 
   onPlayerContext: (itemId: string | null, title: string | null) => void;
 };
 
-export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScreenProps) {
+function readPlayheadMs(): number {
+  try {
+    return TrackPlayer.getProgress().position * 1000;
+  } catch {
+    return 0;
+  }
+}
+
+function readPlaying(): boolean {
+  try {
+    return TrackPlayer.isPlaying();
+  } catch {
+    return false;
+  }
+}
+
+function LoopGuard({ loop, scrubbing }: { loop: LoopPoints; scrubbing: boolean }) {
+  const { positionMs, playing } = usePlayerClock();
+  const loopGuard = useRef(false);
+
+  useEffect(() => {
+    if (loop.aMs == null || loop.bMs == null || loop.bMs <= loop.aMs || !playing || scrubbing) {
+      loopGuard.current = false;
+      return;
+    }
+    if (positionMs >= loop.bMs && !loopGuard.current) {
+      loopGuard.current = true;
+      seekToMs(loop.aMs);
+    } else if (positionMs < loop.bMs - 400) {
+      loopGuard.current = false;
+    }
+  }, [positionMs, playing, loop, scrubbing]);
+
+  return null;
+}
+
+function HeardPercent({
+  itemId,
+  stored,
+  fallbackDurationMs,
+  scrubMs,
+}: {
+  itemId: string;
+  stored: readonly ListenRange[];
+  fallbackDurationMs: number | null;
+  scrubMs: number | null;
+}) {
+  const { t } = useI18n();
+  const { positionMs, durationMs, playing } = usePlayerClock();
+  const open = currentOpenListen();
+  const include = open?.itemId === itemId ? open.range : null;
+  const playhead = scrubMs ?? positionMs;
+  const visible = projectHeardRanges(stored, include, playhead, playing && scrubMs == null);
+  const fraction = listenedFraction(visible, Math.max(durationMs, fallbackDurationMs ?? 0));
+  return <Text style={styles.heroChip}>{t('heardPercent', { percent: Math.round(fraction * 100) })}</Text>;
+}
+
+function NoteTimeHint({ hidden }: { hidden: boolean }) {
+  const { positionMs } = usePlayerClock();
+  const { t, clock, align } = useI18n();
+  if (hidden) {
+    return null;
+  }
+  return (
+    <View pointerEvents="none" style={styles.noteHintWrap}>
+      <Text style={[styles.noteHint, align]}>{t('noteAt', { time: clock(notePositionMs(positionMs)) })}</Text>
+    </View>
+  );
+}
+
+function PlayerDockHost({
+  itemId,
+  title,
+  fallbackDurationMs,
+  stored,
+  scrubMs,
+  markers,
+  onScrub,
+  onSeek,
+  onScrubPreview,
+  onScrubCancel,
+  jumpsCount,
+  onOpenJumps,
+  onOpenSettings,
+  important,
+  importantHintHidden,
+  onDismissImportantHint,
+  onShowImportantHint,
+}: {
+  itemId: string;
+  title: string;
+  fallbackDurationMs: number | null;
+  stored: readonly ListenRange[];
+  scrubMs: number | null;
+  markers: readonly { id: string; positionMs: number }[];
+  onScrub: (positionMs: number | null) => void;
+  onSeek: (positionMs: number, fromMs: number, source: ScrubSeekSource) => void;
+  onScrubPreview?: (fromMs: number, toMs: number) => void;
+  onScrubCancel?: () => void;
+  jumpsCount: number;
+  onOpenJumps: () => void;
+  onOpenSettings: () => void;
+  important: readonly ListenRange[];
+  importantHintHidden: boolean;
+  onDismissImportantHint: () => void;
+  onShowImportantHint: () => void;
+}) {
+  const { positionMs, durationMs, playing } = usePlayerClock();
+  const open = currentOpenListen();
+  const include = open?.itemId === itemId ? open.range : null;
+  const playhead = scrubMs ?? positionMs;
+  const visible = projectHeardRanges(stored, include, playhead, playing && scrubMs == null);
+  return (
+    <PlaybackDock
+      variant="full"
+      title={title}
+      durationMs={Math.max(durationMs, fallbackDurationMs ?? 0)}
+      positionMs={playhead}
+      heard={visible}
+      important={important}
+      importantHintHidden={importantHintHidden}
+      onDismissImportantHint={onDismissImportantHint}
+      onShowImportantHint={onShowImportantHint}
+      markers={markers}
+      scrubMs={scrubMs}
+      onScrub={onScrub}
+      onSeek={onSeek}
+      onScrubPreview={onScrubPreview}
+      onScrubCancel={onScrubCancel}
+      jumpsCount={jumpsCount}
+      onOpenJumps={onOpenJumps}
+      onOpenSettings={onOpenSettings}
+    />
+  );
+}
+
+export function PlayerScreen(props: PlayerScreenProps) {
+  return (
+    <PlayerClockProvider>
+      <PlayerScreenBody {...props} />
+    </PlayerClockProvider>
+  );
+}
+
+function PlayerScreenBody({ navigation, route, onPlayerContext }: PlayerScreenProps) {
   const { itemId, seekMs, seekToken } = route.params;
-  const playing = useIsPlaying();
-  const progress = useProgress(0.25);
   const [item, setItem] = useState<AudioItem | null>(() => getItem(itemId));
   const [notes, setNotes] = useState<Note[]>(() => listNotes(itemId));
   const [jumps, setJumps] = useState<Jump[]>(() => listJumps(itemId));
   const [jumpsOpen, setJumpsOpen] = useState(false);
-  const [heard, setHeard] = useState<StoredRange[]>(() => rangesForItem(itemId));
+  const [heard, setHeard] = useState<ListenRange[]>(() => rangesForItem(itemId));
   const [important, setImportant] = useState<ReplaySpan[]>(() => marksForItem(itemId));
-  const [openListen, setOpenListen] = useState<ListenRange | null>(null);
   const [skips, setSkips] = useState(() => readSkips());
   const [speed, setSpeedState] = useState(item?.speed ?? 1);
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
@@ -84,7 +228,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [highlightHintHidden, setHighlightHintHiddenState] = useState(() => isHighlightHintHidden());
-  const loopGuard = useRef(false);
+  const { t, clock, count, align } = useI18n();
 
   function dismissHighlightHint(): void {
     setHighlightHintHidden(true);
@@ -105,9 +249,9 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     const current = getItem(itemId);
     setItem(current);
     setNotes(listNotes(itemId));
-    const stored = rangesForItem(itemId);
-    setHeard((current) => (current === stored ? current : stored));
+    setHeard(rangesForItem(itemId));
     setImportant(marksForItem(itemId));
+    setScrubMs(null);
     if (current) {
       setSpeedState(current.speed || 1);
       void openItem(current)
@@ -119,7 +263,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           setMissing(!opened);
           setItem(getItem(itemId));
           if (!opened) {
-            setMessage('The file is missing. Locate it and the notes stay on this lesson.');
+            setMessage(t('fileMissingLong'));
             return;
           }
           if (seekToken != null && seekMs != null) {
@@ -128,7 +272,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
         })
         .catch((error: unknown) => {
           if (!cancelled) {
-            setMessage(error instanceof Error ? error.message : 'Could not start playback.');
+            setMessage(error instanceof Error ? error.message : t('couldNotStart'));
           }
         });
     }
@@ -156,18 +300,20 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   }, [navigation]);
 
   useEffect(() => {
-    const apply = () => {
-      const stored = rangesForItem(itemId);
-      setHeard((current) => (current === stored ? current : stored));
-      const open = currentOpenListen();
-      setOpenListen(open?.itemId === itemId ? open.range : null);
+    let openStart: number | null | undefined;
+    const acceptStored = (open: ListenRange | null) => {
+      const start = open?.startMs ?? null;
+      if (start === openStart) {
+        return;
+      }
+      openStart = start;
+      setHeard(rangesForItem(itemId));
     };
-    apply();
+    const current = currentOpenListen();
+    acceptStored(current?.itemId === itemId ? current.range : null);
     const unsubscribe = subscribeListenProgress((update) => {
       if (update.itemId === itemId) {
-        const stored = rangesForItem(itemId);
-        setHeard((current) => (current === stored ? current : stored));
-        setOpenListen(update.open);
+        acceptStored(update.open);
       }
     });
     const unsubscribeMarks = subscribeListenMarks((changedId) => {
@@ -176,8 +322,20 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
       }
     });
     const handle = setInterval(() => {
-      apply();
-      setItem(getItem(itemId));
+      setItem((existing) => {
+        const next = getItem(itemId);
+        if (
+          existing &&
+          next &&
+          existing.durationMs === next.durationMs &&
+          existing.missing === next.missing &&
+          existing.title === next.title &&
+          existing.uri === next.uri
+        ) {
+          return existing;
+        }
+        return next;
+      });
     }, 5000);
     return () => {
       unsubscribe();
@@ -186,29 +344,13 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     };
   }, [itemId]);
 
-  const durationMs = Math.max(progress.duration * 1000, item?.durationMs ?? 0);
-  const positionMs = scrubMs ?? progress.position * 1000;
-
-  useEffect(() => {
-    if (loop.aMs == null || loop.bMs == null || loop.bMs <= loop.aMs || !playing || scrubMs != null) {
-      loopGuard.current = false;
-      return;
-    }
-    if (positionMs >= loop.bMs && !loopGuard.current) {
-      loopGuard.current = true;
-      seekToMs(loop.aMs);
-    } else if (positionMs < loop.bMs - 400) {
-      loopGuard.current = false;
-    }
-  }, [positionMs, playing, loop, scrubMs]);
-
   function rememberJump(fromMs: number, toMs: number, source: RecordedJumpSource, commit: 'defer' | 'now' | 'hold'): void {
     recordJumpSeek({
       itemId,
       fromMs,
       toMs,
       source,
-      commit: commit === 'hold' ? 'hold' : playing ? 'defer' : 'now',
+      commit: commit === 'hold' ? 'hold' : readPlaying() ? 'defer' : 'now',
     });
   }
 
@@ -236,7 +378,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     insertNote({
       id: createId(),
       itemId: item.id,
-      positionMs: notePositionMs(positionMs),
+      positionMs: notePositionMs(readPlayheadMs()),
       text,
       tags: '',
       createdAt: Date.now(),
@@ -248,7 +390,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   async function onLocate(): Promise<void> {
     const found = await locateAudioFile(itemId);
     if (!found) {
-      setMessage('Could not read that file.');
+      setMessage(t('couldNotReadFile'));
       return;
     }
     const current = getItem(itemId);
@@ -256,7 +398,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     if (current) {
       const opened = await openItem(current);
       setMissing(!opened);
-      setMessage(opened ? null : 'The file is still unreadable.');
+      setMessage(opened ? null : t('fileStillUnreadable'));
     }
   }
 
@@ -264,7 +406,6 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     resetItemPlayback(itemId);
     setHeard([]);
     setImportant([]);
-    setOpenListen(null);
     setJumps([]);
     setScrubMs(null);
     const current = getItem(itemId);
@@ -275,18 +416,12 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     setResetOpen(false);
   }
 
-  const visibleHeard = useMemo(
-    () => projectHeardRanges(heard, openListen, positionMs, playing && scrubMs == null),
-    [heard, openListen, positionMs, playing, scrubMs],
-  );
-  const heardFraction = listenedFraction(visibleHeard, durationMs);
-
   if (!item) {
     return (
       <ScreenBackdrop>
         <View style={styles.screen}>
-          <ScreenHeader title="Lesson unavailable" onBack={() => navigation.goBack()} backLabel="Library" />
-          <Text style={styles.message}>This lesson is no longer in the library.</Text>
+          <ScreenHeader title={t('lessonUnavailable')} onBack={() => navigation.goBack()} backLabel={t('library')} />
+          <Text style={[styles.message, align]}>{t('lessonGone')}</Text>
         </View>
       </ScreenBackdrop>
     );
@@ -303,12 +438,12 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           actions={[
             {
               icon: 'time-outline',
-              label: 'Listening history',
+              label: t('listeningHistory'),
               onPress: () => navigation.navigate({ name: 'ListenHistory', params: { itemId }, merge: false }),
             },
             {
               icon: 'options-outline',
-              label: 'Playback settings',
+              label: t('playbackSettings'),
               onPress: () => setSettingsOpen(true),
             },
           ]}
@@ -316,22 +451,22 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.hero}>
             <ArtworkAvatar title={item.title} size={200} />
-            <Text style={styles.heroTitle}>{displayTitle(item.title, 56)}</Text>
+            <Text style={styles.heroTitle}>{displayTitle(item.title, 56, t('untitled'))}</Text>
             <View style={styles.heroChips}>
-              <Text style={styles.heroChip}>{(item.format ?? 'audio').toUpperCase()}</Text>
-              <Text style={styles.heroChip}>{Math.round(heardFraction * 100)}% heard</Text>
-              <Text style={styles.heroChip}>{notes.length} notes</Text>
-              {missing ? <Text style={[styles.heroChip, styles.heroChipDanger]}>Missing file</Text> : null}
+              <Text style={styles.heroChip}>{(item.format ?? t('audioWord')).toUpperCase()}</Text>
+              <HeardPercent itemId={item.id} stored={heard} fallbackDurationMs={item.durationMs} scrubMs={scrubMs} />
+              <Text style={styles.heroChip}>{count('notes', notes.length)}</Text>
+              {missing ? <Text style={[styles.heroChip, styles.heroChipDanger]}>{t('missingFile')}</Text> : null}
             </View>
             <AppPressable
               accessibilityRole="button"
-              accessibilityLabel="Reset playback progress"
+              accessibilityLabel={t('resetPlaybackProgress')}
               haptic
               onPress={() => setResetOpen(true)}
               style={styles.resetButton}
             >
               <Ionicons name="refresh-outline" size={16} color={colors.muted} />
-              <Text style={styles.resetButtonText}>Reset progress</Text>
+              <Text style={styles.resetButtonText}>{t('resetProgress')}</Text>
             </AppPressable>
           </View>
 
@@ -339,7 +474,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             <View style={styles.loopBanner}>
               <Ionicons name="repeat" size={16} color={colors.accent} />
               <Text style={styles.loopLabel}>
-                Loop {formatClock(loop.aMs)} – {formatClock(loop.bMs)}
+                {t('loopRange', { start: clock(loop.aMs), end: clock(loop.bMs) })}
               </Text>
             </View>
           ) : null}
@@ -348,21 +483,25 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           {missing ? (
             <Pressable accessibilityRole="button" onPress={() => void onLocate()} style={styles.primary}>
               <Ionicons name="locate-outline" size={18} color={colors.background} />
-              <Text style={styles.primaryText}>Locate file</Text>
+              <Text style={styles.primaryText}>{t('locateFile')}</Text>
             </Pressable>
           ) : null}
 
           <View style={styles.notesCard}>
-            <Text style={styles.notesTitle}>Notes</Text>
+            <Text style={[styles.notesTitle, align]}>{t('notes')}</Text>
             <View style={styles.composer}>
-              <TextInput
-                value={draft}
-                onChangeText={setDraft}
-                placeholder={`Note at ${formatClock(notePositionMs(positionMs))}`}
-                placeholderTextColor={colors.muted}
-                style={styles.noteInput}
-                multiline
-              />
+              <View style={styles.noteField}>
+                <TextInput
+                  value={draft}
+                  onChangeText={setDraft}
+                  placeholder=""
+                  placeholderTextColor={colors.muted}
+                  accessibilityLabel={t('notes')}
+                  style={[styles.noteInput, align]}
+                  multiline
+                />
+                <NoteTimeHint hidden={draft.length > 0} />
+              </View>
               <AppPressable
                 accessibilityRole="button"
                 haptic
@@ -372,25 +511,25 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
                 }}
                 style={styles.addNote}
               >
-                <Text style={styles.addNoteText}>Add</Text>
+                <Text style={styles.addNoteText}>{t('add')}</Text>
               </AppPressable>
             </View>
             {notes.length === 0 ? (
-              <Text style={styles.noteEmpty}>Notes land a few seconds before the moment you tap Add.</Text>
+              <Text style={[styles.noteEmpty, align]}>{t('notesHint')}</Text>
             ) : (
               notes.map((note) => (
                 <View key={note.id} style={styles.noteRow}>
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => {
-                      const fromMs = progress.position * 1000;
+                      const fromMs = readPlayheadMs();
                       seekToMs(note.positionMs);
                       rememberJump(fromMs, note.positionMs, 'note', 'defer');
                     }}
                     style={styles.noteMain}
                   >
-                    <Text style={styles.noteTime}>{formatClock(note.positionMs)}</Text>
-                    <Text style={styles.noteText}>{note.text}</Text>
+                    <Text style={styles.noteTime}>{clock(note.positionMs)}</Text>
+                    <Text style={[styles.noteText, align]}>{note.text}</Text>
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
@@ -404,7 +543,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
                       }
                     }}
                   >
-                    <Text style={styles.deleteNote}>{pendingDeleteId === note.id ? 'Confirm' : 'Delete'}</Text>
+                    <Text style={styles.deleteNote}>{pendingDeleteId === note.id ? t('confirm') : t('delete')}</Text>
                   </Pressable>
                 </View>
               ))
@@ -412,15 +551,17 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           </View>
         </ScrollView>
 
-        <PlaybackDock
-          variant="full"
+        <PlayerDockHost
+          itemId={item.id}
           title={item.title}
-          durationMs={durationMs}
-          positionMs={positionMs}
-          heard={visibleHeard}
+          fallbackDurationMs={item.durationMs}
+          stored={heard}
           important={important}
-          markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
+          importantHintHidden={highlightHintHidden}
+          onDismissImportantHint={dismissHighlightHint}
+          onShowImportantHint={showHighlightHint}
           scrubMs={scrubMs}
+          markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
           onScrub={setScrubMs}
           onSeek={(toMs, fromMs, source) => {
             seekToMs(toMs);
@@ -434,10 +575,8 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             setJumpsOpen(true);
           }}
           onOpenSettings={() => setSettingsOpen(true)}
-          importantHintHidden={highlightHintHidden}
-          onDismissImportantHint={dismissHighlightHint}
-          onShowImportantHint={showHighlightHint}
         />
+        <LoopGuard loop={loop} scrubbing={scrubMs != null} />
         <PlaybackSettingsSheet
           visible={settingsOpen}
           onClose={() => setSettingsOpen(false)}
@@ -458,7 +597,6 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           }}
           loop={loop}
           onLoop={setLoop}
-          positionMs={positionMs}
           skips={skips}
           onSkips={(next) => {
             writeSkips(next);
@@ -594,8 +732,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     alignItems: 'flex-end',
   },
-  noteInput: {
+  noteField: {
     flex: 1,
+  },
+  noteHintWrap: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  noteHint: {
+    color: colors.muted,
+    fontSize: 16,
+  },
+  noteInput: {
     minHeight: 48,
     maxHeight: 120,
     color: colors.text,

@@ -4,6 +4,7 @@ import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { githubUrls } from '../constants/github';
+import { useI18n } from '../i18n/I18nProvider';
 import { AppPressable } from './AppPressable';
 import { colors, radii, spacing } from './theme';
 
@@ -30,6 +31,7 @@ function LinkRow({
   detail: string;
   url: string;
 }) {
+  const { align } = useI18n();
   return (
     <AppPressable
       accessibilityRole="link"
@@ -39,8 +41,8 @@ function LinkRow({
     >
       <Ionicons name={icon} size={22} color={colors.accent} />
       <View style={styles.linkText}>
-        <Text style={styles.linkLabel}>{label}</Text>
-        <Text style={styles.linkDetail}>{detail}</Text>
+        <Text style={[styles.linkLabel, align]}>{label}</Text>
+        <Text style={[styles.linkDetail, align]}>{detail}</Text>
       </View>
       <Ionicons name="open-outline" size={18} color={colors.muted} />
     </AppPressable>
@@ -49,62 +51,62 @@ function LinkRow({
 
 export function AboutSheet({ visible, onClose }: AboutSheetProps) {
   const insets = useSafeAreaInsets();
+  const { t, align, direction } = useI18n();
   const version = Constants.expoConfig?.version ?? '0.1.0';
 
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close about" />
+      <View style={[styles.fill, { direction }]}>
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('closeAbout')} />
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
         <View style={styles.handle} />
-        <Text style={styles.title}>About AudioNote</Text>
+        <Text style={[styles.title, align]}>{t('about')}</Text>
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={styles.lead}>
-            AudioNote helps you listen through long local lessons, return to the last point you played, see how much you have actually heard, step back through jump history, and capture timestamped notes—all on your device.
-          </Text>
-          <Text style={styles.version}>Version {version}</Text>
-          <Text style={styles.sectionTitle}>Open source on GitHub</Text>
-          <Text style={styles.body}>
-            AudioNote is developed in the open. We welcome contributions, bug reports, and ideas for what to build next.
-          </Text>
+          <Text style={[styles.lead, align]}>{t('aboutLead')}</Text>
+          <Text style={[styles.version, align]}>{t('version', { version })}</Text>
+          <Text style={[styles.sectionTitle, align]}>{t('openSourceTitle')}</Text>
+          <Text style={[styles.body, align]}>{t('openSourceBody')}</Text>
           <View style={styles.links}>
             <LinkRow
               icon="logo-github"
-              label="View repository"
+              label={t('viewRepository')}
               detail={githubUrls.repository.replace('https://', '')}
               url={githubUrls.repository}
             />
             <LinkRow
               icon="git-pull-request-outline"
-              label="Contribute"
-              detail="Pull requests and improvements welcome"
+              label={t('contribute')}
+              detail={t('contributeDetail')}
               url={githubUrls.contributing}
             />
             <LinkRow
               icon="bug-outline"
-              label="Report an issue"
-              detail="Something broken? Tell us on GitHub"
+              label={t('reportIssue')}
+              detail={t('reportIssueDetail')}
               url={githubUrls.newIssue}
             />
             <LinkRow
               icon="bulb-outline"
-              label="Request a feature"
-              detail="Share what would make AudioNote better for you"
+              label={t('requestFeature')}
+              detail={t('requestFeatureDetail')}
               url={githubUrls.newFeature}
             />
           </View>
-          <Text style={styles.footer}>
-            Thank you for using AudioNote and for helping improve it for everyone who learns from long-form audio.
-          </Text>
+          <Text style={[styles.footer, align]}>{t('aboutFooter')}</Text>
         </ScrollView>
         <AppPressable accessibilityRole="button" haptic onPress={onClose} style={styles.closeBtn}>
-          <Text style={styles.closeBtnText}>Close</Text>
+          <Text style={styles.closeBtnText}>{t('close')}</Text>
         </AppPressable>
+      </View>
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',

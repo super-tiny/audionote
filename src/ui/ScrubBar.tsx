@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import type { ListenRange } from '../library/ranges';
-import { formatClock } from '../notes/capture';
+import { useI18n } from '../i18n/I18nProvider';
 import { colors } from './theme';
 
 type Marker = {
@@ -56,6 +56,7 @@ export function ScrubBar({
   const previewSeekRef = useRef(onScrubPreview);
   const cancelScrubRef = useRef(onScrubCancel);
   const [preview, setPreview] = useState<number | null>(null);
+  const { t, clock } = useI18n();
 
   durationRef.current = durationMs;
   positionRef.current = positionMs;
@@ -123,11 +124,7 @@ export function ScrubBar({
     <GestureDetector gesture={gesture}>
       <View
         accessibilityRole="adjustable"
-        accessibilityLabel={
-          important.length > 0
-            ? 'Playback position. Highlighted sections were played more than once.'
-            : 'Playback position'
-        }
+        accessibilityLabel={important.length > 0 ? t('playbackPositionHighlights') : t('playbackPosition')}
         style={styles.wrap}
         onLayout={(event) => {
           widthRef.current = Math.max(1, event.nativeEvent.layout.width);
@@ -135,7 +132,7 @@ export function ScrubBar({
       >
         {preview != null ? (
           <Text style={[styles.bubble, { left: `${Math.min(92, Math.max(0, fraction * 100))}%` }]}>
-            {formatClock(preview)}
+            {clock(preview)}
           </Text>
         ) : (
           <View style={styles.bubbleSpacer} />
@@ -186,6 +183,7 @@ export function ScrubBar({
 
 const styles = StyleSheet.create({
   wrap: {
+    direction: 'ltr',
     paddingTop: 28,
     paddingBottom: 8,
   },

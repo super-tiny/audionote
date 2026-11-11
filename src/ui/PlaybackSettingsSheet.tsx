@@ -4,7 +4,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState } from 'react';
 
 import { SLEEP_MINUTES, SPEEDS, replayLastTenSeconds, type SkipSettings } from '../playback/engine';
-import { formatClock } from '../notes/capture';
+import { usePlayerClock } from '../playback/PlayerClock';
+import { useI18n } from '../i18n/I18nProvider';
+import { directionalIcon } from './direction';
 import { AppPressable } from './AppPressable';
 import { colors, radii, spacing } from './theme';
 
@@ -24,7 +26,6 @@ type PlaybackSettingsSheetProps = {
   onSleep: (minutes: number | null) => void;
   loop: LoopPoints;
   onLoop: (loop: LoopPoints) => void;
-  positionMs: number;
   skips: SkipSettings;
   onSkips: (skips: SkipSettings) => void;
 };
@@ -40,13 +41,72 @@ function MenuRow({
   value: string;
   onPress: () => void;
 }) {
+  const { isRtl, align } = useI18n();
   return (
     <AppPressable accessibilityRole="button" haptic onPress={onPress} style={styles.row}>
       <Ionicons name={icon} size={22} color={colors.text} />
-      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={[styles.rowLabel, align]}>{label}</Text>
       <Text style={styles.rowValue}>{value}</Text>
-      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+      <Ionicons name={directionalIcon('chevron-forward', isRtl)} size={18} color={colors.muted} />
     </AppPressable>
+  );
+}
+
+function LoopPointEditor({
+  loop,
+  loopOn,
+  onLoop,
+}: {
+  loop: LoopPoints;
+  loopOn: boolean;
+  onLoop: (loop: LoopPoints) => void;
+}) {
+  const { positionMs } = usePlayerClock();
+  const { t, clock, align } = useI18n();
+  const playhead = Math.round(positionMs);
+
+  return (
+    <View style={styles.loopPanel}>
+      <View style={styles.loopToggleRow}>
+        <Text style={[styles.rowLabel, align]}>{t('loopSection')}</Text>
+        <Switch
+          value={loopOn}
+          onValueChange={(on) => {
+            if (!on) {
+              onLoop({ aMs: null, bMs: null });
+            } else if (loop.aMs == null || loop.bMs == null) {
+              onLoop({ aMs: playhead, bMs: playhead + 10_000 });
+            }
+          }}
+          trackColor={{ false: colors.line, true: colors.accentSoft }}
+          thumbColor={loopOn ? colors.accent : colors.muted}
+        />
+      </View>
+      <AppPressable accessibilityRole="button" haptic onPress={replayLastTenSeconds} style={styles.loopAction}>
+        <Text style={[styles.loopActionText, align]}>{t('replayLast10')}</Text>
+      </AppPressable>
+      <AppPressable
+        accessibilityRole="button"
+        haptic
+        onPress={() => onLoop({ ...loop, aMs: playhead })}
+        style={styles.loopAction}
+      >
+        <Text style={[styles.loopActionText, align]}>{t('setA', { time: clock(playhead) })}</Text>
+      </AppPressable>
+      <AppPressable
+        accessibilityRole="button"
+        haptic
+        onPress={() => onLoop({ ...loop, bMs: playhead })}
+        style={styles.loopAction}
+      >
+        <Text style={[styles.loopActionText, align]}>{t('setB', { time: clock(playhead) })}</Text>
+      </AppPressable>
+      {loopOn ? (
+        <Text style={[styles.loopHint, align]}>
+          {t('looping', { start: clock(loop.aMs!), end: clock(loop.bMs!) })}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -59,12 +119,12 @@ export function PlaybackSettingsSheet({
   onSleep,
   loop,
   onLoop,
-  positionMs,
   skips,
   onSkips,
 }: PlaybackSettingsSheetProps) {
   const insets = useSafeAreaInsets();
   const [panel, setPanel] = useState<Panel>('root');
+  const { t, clock, direction, isRtl, align } = useI18n();
 
   function closeAll(): void {
     setPanel('root');
@@ -72,37 +132,38 @@ export function PlaybackSettingsSheet({
   }
 
   const loopOn = loop.aMs != null && loop.bMs != null && loop.bMs > loop.aMs;
-  const sleepLabel = sleepMinutes != null ? `${sleepMinutes} min` : 'Off';
-  const loopLabel = loopOn ? `${formatClock(loop.aMs!)} – ${formatClock(loop.bMs!)}` : 'Off';
-  const speedLabel = speed === 1 ? 'Normal' : `${speed}×`;
+  const sleepLabel = sleepMinutes != null ? t('minutes', { count: sleepMinutes }) : t('off');
+  const loopLabel = loopOn ? `${clock(loop.aMs!)} – ${clock(loop.bMs!)}` : t('off');
+  const speedLabel = speed === 1 ? t('normal') : `${speed}×`;
 
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={closeAll}>
-      <Pressable style={styles.backdrop} onPress={closeAll} accessibilityLabel="Close settings" />
+      <View style={[styles.fill, { direction }]}>
+      <Pressable style={styles.backdrop} onPress={closeAll} accessibilityLabel={t('closeSettings')} />
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
         <View style={styles.handle} />
         {panel !== 'root' ? (
           <View style={styles.subHeader}>
             <AppPressable accessibilityRole="button" onPress={() => setPanel('root')} style={styles.subBack}>
-              <Ionicons name="chevron-back" size={22} color={colors.text} />
+              <Ionicons name={directionalIcon('chevron-back', isRtl)} size={22} color={colors.text} />
             </AppPressable>
-            <Text style={styles.subTitle}>
-              {panel === 'speed' ? 'Playback speed' : panel === 'sleep' ? 'Sleep timer' : panel === 'loop' ? 'Loop' : 'Skip intervals'}
+            <Text style={[styles.subTitle, align]}>
+              {panel === 'speed' ? t('playbackSpeed') : panel === 'sleep' ? t('sleepTimer') : panel === 'loop' ? t('loop') : t('skipIntervals')}
             </Text>
           </View>
         ) : (
-          <Text style={styles.title}>Playback settings</Text>
+          <Text style={[styles.title, align]}>{t('playbackSettings')}</Text>
         )}
 
         <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
           {panel === 'root' ? (
             <>
-              <MenuRow icon="speedometer-outline" label="Speed" value={speedLabel} onPress={() => setPanel('speed')} />
-              <MenuRow icon="moon-outline" label="Sleep timer" value={sleepLabel} onPress={() => setPanel('sleep')} />
-              <MenuRow icon="repeat-outline" label="A–B loop" value={loopLabel} onPress={() => setPanel('loop')} />
+              <MenuRow icon="speedometer-outline" label={t('speed')} value={speedLabel} onPress={() => setPanel('speed')} />
+              <MenuRow icon="moon-outline" label={t('sleepTimer')} value={sleepLabel} onPress={() => setPanel('sleep')} />
+              <MenuRow icon="repeat-outline" label={t('loop')} value={loopLabel} onPress={() => setPanel('loop')} />
               <MenuRow
                 icon="play-skip-forward-outline"
-                label="Skip intervals"
+                label={t('skipIntervals')}
                 value={`−${Math.round(skips.backMs / 1000)}s / +${Math.round(skips.forwardMs / 1000)}s`}
                 onPress={() => setPanel('skip')}
               />
@@ -123,7 +184,7 @@ export function PlaybackSettingsSheet({
                   style={[styles.chip, speed === value && styles.chipOn]}
                 >
                   <Text style={[styles.chipText, speed === value && styles.chipTextOn]}>
-                    {value === 1 ? 'Normal' : `${value}×`}
+                    {value === 1 ? t('normal') : `${value}×`}
                   </Text>
                 </AppPressable>
               ))}
@@ -143,62 +204,20 @@ export function PlaybackSettingsSheet({
                   }}
                   style={[styles.chip, sleepMinutes === minutes && styles.chipOn]}
                 >
-                  <Text style={[styles.chipText, sleepMinutes === minutes && styles.chipTextOn]}>{minutes} min</Text>
+                  <Text style={[styles.chipText, sleepMinutes === minutes && styles.chipTextOn]}>{t('minutes', { count: minutes })}</Text>
                 </AppPressable>
               ))}
               <AppPressable accessibilityRole="button" haptic onPress={() => { onSleep(null); setPanel('root'); }} style={styles.chip}>
-                <Text style={styles.chipText}>Off</Text>
+                <Text style={styles.chipText}>{t('off')}</Text>
               </AppPressable>
             </View>
           ) : null}
 
-          {panel === 'loop' ? (
-            <View style={styles.loopPanel}>
-              <View style={styles.loopToggleRow}>
-                <Text style={styles.rowLabel}>Loop section</Text>
-                <Switch
-                  value={loopOn}
-                  onValueChange={(on) => {
-                    if (!on) {
-                      onLoop({ aMs: null, bMs: null });
-                    } else if (loop.aMs == null || loop.bMs == null) {
-                      onLoop({ aMs: Math.round(positionMs), bMs: Math.round(positionMs) + 10_000 });
-                    }
-                  }}
-                  trackColor={{ false: colors.line, true: colors.accentSoft }}
-                  thumbColor={loopOn ? colors.accent : colors.muted}
-                />
-              </View>
-              <AppPressable accessibilityRole="button" haptic onPress={replayLastTenSeconds} style={styles.loopAction}>
-                <Text style={styles.loopActionText}>Replay last 10 seconds</Text>
-              </AppPressable>
-              <AppPressable
-                accessibilityRole="button"
-                haptic
-                onPress={() => onLoop({ ...loop, aMs: Math.round(positionMs) })}
-                style={styles.loopAction}
-              >
-                <Text style={styles.loopActionText}>Set A at {formatClock(positionMs)}</Text>
-              </AppPressable>
-              <AppPressable
-                accessibilityRole="button"
-                haptic
-                onPress={() => onLoop({ ...loop, bMs: Math.round(positionMs) })}
-                style={styles.loopAction}
-              >
-                <Text style={styles.loopActionText}>Set B at {formatClock(positionMs)}</Text>
-              </AppPressable>
-              {loopOn ? (
-                <Text style={styles.loopHint}>
-                  Looping {formatClock(loop.aMs!)} – {formatClock(loop.bMs!)}
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
+          {panel === 'loop' ? <LoopPointEditor loop={loop} loopOn={loopOn} onLoop={onLoop} /> : null}
 
           {panel === 'skip' ? (
             <View style={styles.skipPanel}>
-              <Text style={styles.skipHeading}>Rewind</Text>
+              <Text style={[styles.skipHeading, align]}>{t('rewind')}</Text>
               <View style={styles.skipRow}>
                 <AppPressable
                   accessibilityRole="button"
@@ -207,7 +226,7 @@ export function PlaybackSettingsSheet({
                 >
                   <Text style={styles.skipStepText}>−5s</Text>
                 </AppPressable>
-                <Text style={styles.skipValue}>{Math.round(skips.backMs / 1000)} sec</Text>
+                <Text style={styles.skipValue}>{t('seconds', { count: Math.round(skips.backMs / 1000) })}</Text>
                 <AppPressable
                   accessibilityRole="button"
                   onPress={() => onSkips({ ...skips, backMs: skips.backMs + 5000 })}
@@ -216,7 +235,7 @@ export function PlaybackSettingsSheet({
                   <Text style={styles.skipStepText}>+5s</Text>
                 </AppPressable>
               </View>
-              <Text style={styles.skipHeading}>Skip forward</Text>
+              <Text style={[styles.skipHeading, align]}>{t('skipForward')}</Text>
               <View style={styles.skipRow}>
                 <AppPressable
                   accessibilityRole="button"
@@ -225,7 +244,7 @@ export function PlaybackSettingsSheet({
                 >
                   <Text style={styles.skipStepText}>−5s</Text>
                 </AppPressable>
-                <Text style={styles.skipValue}>{Math.round(skips.forwardMs / 1000)} sec</Text>
+                <Text style={styles.skipValue}>{t('seconds', { count: Math.round(skips.forwardMs / 1000) })}</Text>
                 <AppPressable
                   accessibilityRole="button"
                   onPress={() => onSkips({ ...skips, forwardMs: skips.forwardMs + 5000 })}
@@ -238,11 +257,16 @@ export function PlaybackSettingsSheet({
           ) : null}
         </ScrollView>
       </View>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
@@ -280,9 +304,10 @@ const styles = StyleSheet.create({
     minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: -8,
+    marginStart: -8,
   },
   subTitle: {
+    flex: 1,
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',
