@@ -52,8 +52,8 @@ test('filters by preset length and by a custom inclusive range', () => {
 test('rejects an invalid custom range and a minimum above the maximum', () => {
   const invalid = { kind: 'custom' as const, minMs: null, maxMs: null, invalid: true };
   const backwards = { kind: 'custom' as const, minMs: 120_000, maxMs: 30_000, invalid: false };
-  assert.equal(filterProblem(invalid), 'Use minutes, such as 1.5.');
-  assert.equal(filterProblem(backwards), 'Minimum is longer than maximum.');
+  assert.equal(filterProblem(invalid), 'invalid');
+  assert.equal(filterProblem(backwards), 'order');
   assert.deepEqual(selectPortions(portions, invalid, 'start', 'asc'), []);
   assert.deepEqual(selectPortions(portions, backwards, 'start', 'asc'), []);
   assert.deepEqual(parseMinutes(''), { ms: null, invalid: false });

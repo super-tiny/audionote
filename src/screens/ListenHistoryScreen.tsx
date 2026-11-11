@@ -22,9 +22,10 @@ import {
   type SortDirection,
 } from '../library/listenHistory';
 import { displayTitle } from '../ui/displayTitle';
-import { formatClock } from '../notes/capture';
 import type { RootStackParamList } from '../navigation/types';
 import { flushProgress } from '../playback/persist';
+import { useI18n } from '../i18n/I18nProvider';
+import type { MessageKey } from '../i18n/messages';
 import { AppPressable } from '../ui/AppPressable';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ScreenHeader } from '../ui/ScreenHeader';
@@ -34,11 +35,25 @@ type ListenHistoryProps = NativeStackScreenProps<RootStackParamList, 'ListenHist
   onPlayerContext: (itemId: string | null, title: string | null) => void;
 };
 
-const SORTS: { key: ListenSortKey; label: string }[] = [
-  { key: 'start', label: 'Start' },
-  { key: 'duration', label: 'Length' },
-  { key: 'listened', label: 'When' },
+const SORTS: { key: ListenSortKey; label: MessageKey }[] = [
+  { key: 'start', label: 'sortStart' },
+  { key: 'duration', label: 'sortLength' },
+  { key: 'listened', label: 'sortWhen' },
 ];
+
+const FILTER_TEXT: Record<PortionFilter['kind'], { label: MessageKey; hint: MessageKey }> = {
+  all: { label: 'filterAll', hint: 'filterAllHint' },
+  short: { label: 'filterShort', hint: 'filterShortHint' },
+  medium: { label: 'filterMedium', hint: 'filterMediumHint' },
+  long: { label: 'filterLong', hint: 'filterLongHint' },
+  custom: { label: 'filterCustom', hint: 'filterCustomHint' },
+};
+
+const BAND_LABEL: Record<DurationBand, MessageKey> = {
+  short: 'filterShort',
+  medium: 'filterMedium',
+  long: 'filterLong',
+};
 
 const BAND_COLOR: Record<DurationBand, string> = {
   short: colors.muted,
@@ -46,8 +61,8 @@ const BAND_COLOR: Record<DurationBand, string> = {
   long: colors.heard,
 };
 
-function formatListenedAt(ms: number): string {
-  return new Date(ms).toLocaleString(undefined, {
+function formatListenedAt(ms: number, locale: string): string {
+  return new Date(ms).toLocaleString(locale, {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -74,6 +89,7 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
   const [maxText, setMaxText] = useState('');
   const [sortKey, setSortKey] = useState<ListenSortKey>('start');
   const [direction, setDirection] = useState<SortDirection>('asc');
+  const { t, clock, count, locale, align } = useI18n();
   useEffect(() => {
     setScope(routeItemId ? 'lesson' : 'all');
   }, [routeItemId]);
@@ -96,11 +112,13 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
 
   const filter = useMemo(() => buildFilter(kind, minText, maxText), [kind, minText, maxText]);
   const problem = filterProblem(filter);
+  const problemText = problem === 'invalid' ? t('minutesInvalid') : problem === 'order' ? t('minAboveMax') : null;
   const visible = useMemo(
     () => selectPortions(portions, filter, sortKey, direction),
     [portions, filter, sortKey, direction],
   );
-  const hint = DURATION_FILTERS.find((entry) => entry.kind === kind)?.hint ?? '';
+  const selectedFilter = FILTER_TEXT[kind];
+  const hint = t(selectedFilter.hint);
   const totalMs = visible.reduce((sum, portion) => sum + portionDurationMs(portion), 0);
 
   function chooseSort(next: ListenSortKey): void {
@@ -125,55 +143,57 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
     <ScreenBackdrop>
       <View style={styles.screen}>
         <ScreenHeader
-          title={lesson ? displayTitle(lesson.title, 42) : 'Listening history'}
-          subtitle={lesson ? 'Listening history' : 'Every recorded portion'}
+          title={lesson ? displayTitle(lesson.title, 42, t('untitled')) : t('listeningHistory')}
+          subtitle={lesson ? t('listeningHistory') : t('everyRecordedPortion')}
           onBack={() => navigation.goBack()}
-          backLabel="Back"
         />
         <View style={styles.controls}>
           {routeItemId ? (
             <View style={styles.scopeRow}>
-              <ScopeChip label="This lesson" selected={scope === 'lesson'} onPress={() => setScope('lesson')} />
-              <ScopeChip label="All lessons" selected={scope === 'all'} onPress={() => setScope('all')} />
+              <ScopeChip label={t('thisLesson')} selected={scope === 'lesson'} onPress={() => setScope('lesson')} />
+              <ScopeChip label={t('allLessonsScope')} selected={scope === 'all'} onPress={() => setScope('all')} />
             </View>
           ) : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
             {DURATION_FILTERS.map((entry) => {
               const selected = kind === entry.kind;
+              const copy = FILTER_TEXT[entry.kind];
+              const label = t(copy.label);
+              const entryHint = t(copy.hint);
               return (
                 <Pressable
                   key={entry.kind}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={`${entry.label}. ${entry.hint}`}
+                  accessibilityLabel={`${label}. ${entryHint}`}
                   onPress={() => setKind(entry.kind)}
                   style={[styles.chip, selected && styles.chipOn]}
                 >
-                  <Text style={[styles.chipText, selected && styles.chipTextOn]}>{entry.label}</Text>
+                  <Text style={[styles.chipText, selected && styles.chipTextOn]}>{label}</Text>
                 </Pressable>
               );
             })}
           </ScrollView>
-          <Text style={[styles.hint, problem ? styles.problem : null]}>{problem ?? hint}</Text>
+          <Text style={[styles.hint, align, problem ? styles.problem : null]}>{problemText ?? hint}</Text>
           {kind === 'custom' ? (
             <View style={styles.rangeRow}>
               <TextInput
                 value={minText}
                 onChangeText={setMinText}
                 keyboardType="decimal-pad"
-                placeholder="Min minutes"
+                placeholder={t('minMinutes')}
                 placeholderTextColor={colors.muted}
-                accessibilityLabel="Minimum duration in minutes"
-                style={styles.rangeInput}
+                accessibilityLabel={t('minMinutesA11y')}
+                style={[styles.rangeInput, align]}
               />
               <TextInput
                 value={maxText}
                 onChangeText={setMaxText}
                 keyboardType="decimal-pad"
-                placeholder="Max minutes"
+                placeholder={t('maxMinutes')}
                 placeholderTextColor={colors.muted}
-                accessibilityLabel="Maximum duration in minutes"
-                style={styles.rangeInput}
+                accessibilityLabel={t('maxMinutesA11y')}
+                style={[styles.rangeInput, align]}
               />
             </View>
           ) : null}
@@ -181,27 +201,28 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
             {SORTS.map((entry) => {
               const selected = sortKey === entry.key;
               const arrow = direction === 'asc' ? 'arrow-up' : 'arrow-down';
-              const directionLabel = direction === 'asc' ? 'ascending' : 'descending';
+              const label = t(entry.label);
+              const directionLabel = direction === 'asc' ? t('ascending') : t('descending');
               return (
                 <Pressable
                   key={entry.key}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
                   accessibilityLabel={
-                    selected ? `Sort by ${entry.label}, ${directionLabel}. Activate to reverse.` : `Sort by ${entry.label}`
+                    selected ? t('sortByActive', { label, direction: directionLabel }) : t('sortBy', { label })
                   }
                   onPress={() => chooseSort(entry.key)}
                   style={[styles.sortButton, selected && styles.sortButtonOn]}
                 >
-                  <Text style={[styles.sortText, selected && styles.sortTextOn]}>{entry.label}</Text>
+                  <Text style={[styles.sortText, selected && styles.sortTextOn]}>{label}</Text>
                   {selected ? <Ionicons name={arrow} size={14} color={colors.background} /> : null}
                 </Pressable>
               );
             })}
           </View>
           <Text style={styles.summary}>
-            {visible.length} {visible.length === 1 ? 'portion' : 'portions'}
-            {visible.length ? ` · ${formatClock(totalMs)}` : ''}
+            {count('portions', visible.length)}
+            {visible.length ? ` · ${clock(totalMs)}` : ''}
           </Text>
         </View>
         <FlashList
@@ -211,10 +232,8 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
           contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.xl }}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
-            <Text style={styles.empty}>
-              {portions.length === 0
-                ? 'No portions recorded yet. They show up here after you listen.'
-                : 'No portions match this length.'}
+            <Text style={[styles.empty, align]}>
+              {portions.length === 0 ? t('noPortionsYet') : t('noPortionsMatch')}
             </Text>
           }
           renderItem={({ item: portion }) => (
@@ -248,17 +267,19 @@ function PortionRow({
   showTitle: boolean;
   onPress: () => void;
 }) {
+  const { t, clock, locale, align } = useI18n();
   const durationMs = portionDurationMs(portion);
   const band = durationBand(durationMs);
-  const bandLabel = DURATION_FILTERS.find((entry) => entry.kind === band)?.label ?? band;
+  const bandLabel = t(BAND_LABEL[band]);
   const meter = Math.min(1, durationMs / LONG_MIN_MS);
-  const start = formatClock(portion.startMs);
-  const end = formatClock(portion.endMs);
-  const length = formatClock(durationMs);
+  const start = clock(portion.startMs);
+  const end = clock(portion.endMs);
+  const length = clock(durationMs);
+  const title = displayTitle(portion.title, 44, t('untitled'));
   return (
     <AppPressable
       accessibilityRole="button"
-      accessibilityLabel={`${displayTitle(portion.title)}. ${bandLabel} portion from ${start} to ${end}, length ${length}. Play from the start.`}
+      accessibilityLabel={t('portionA11y', { title, band: bandLabel, start, end, length })}
       haptic
       onPress={onPress}
       style={styles.card}
@@ -268,19 +289,19 @@ function PortionRow({
         <Text style={styles.length}>{length}</Text>
       </View>
       {showTitle ? (
-        <Text numberOfLines={1} style={styles.cardTitle}>
-          {displayTitle(portion.title)}
+        <Text numberOfLines={1} style={[styles.cardTitle, align]}>
+          {title}
         </Text>
       ) : null}
       <View style={styles.times}>
-        <TimeStat label="Start" value={start} />
-        <TimeStat label="End" value={end} />
-        <TimeStat label="Length" value={length} />
+        <TimeStat label={t('timeStart')} value={start} />
+        <TimeStat label={t('timeEnd')} value={end} />
+        <TimeStat label={t('timeLength')} value={length} />
       </View>
       <View style={styles.meterTrack}>
         <View style={[styles.meterFill, { width: `${Math.max(meter * 100, 6)}%`, backgroundColor: BAND_COLOR[band] }]} />
       </View>
-      <Text style={styles.when}>Heard {formatListenedAt(portion.sessionAt)}</Text>
+      <Text style={[styles.when, align]}>{t('heardWhen', { when: formatListenedAt(portion.sessionAt, locale ?? 'en') })}</Text>
     </AppPressable>
   );
 }
@@ -445,6 +466,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   meterTrack: {
+    direction: 'ltr',
     height: 6,
     borderRadius: 3,
     backgroundColor: colors.line,

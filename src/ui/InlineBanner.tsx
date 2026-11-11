@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radii, spacing } from './theme';
+import { useI18n } from '../i18n/I18nProvider';
 
 type InlineBannerProps = {
   message: string;
@@ -32,13 +33,14 @@ const toneStyles = {
 
 export function InlineBanner({ message, tone = 'info', onDismiss }: InlineBannerProps) {
   const palette = toneStyles[tone];
+  const { t, align } = useI18n();
 
   return (
     <View style={[styles.wrap, { backgroundColor: palette.background, borderColor: palette.border }]}>
       <Ionicons name={palette.icon} size={18} color={palette.text} />
-      <Text style={[styles.text, { color: palette.text }]}>{message}</Text>
+      <Text style={[styles.text, align, { color: palette.text }]}>{message}</Text>
       {onDismiss ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss" onPress={onDismiss} hitSlop={8}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('dismiss')} onPress={onDismiss} hitSlop={8}>
           <Ionicons name="close" size={18} color={palette.text} />
         </Pressable>
       ) : null}

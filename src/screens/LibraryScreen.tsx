@@ -17,15 +17,17 @@ import { importAudioFiles, locateAudioFile, type ImportSummary } from '../librar
 import { refreshPresence } from '../library/files';
 import { coveredMs, listenedFraction, projectHeardRanges } from '../library/ranges';
 import { currentOpenListen, subscribeListenProgress } from '../playback/persist';
-import { formatClock, formatHours } from '../notes/capture';
 import type { RootStackParamList } from '../navigation/types';
 import { resetItemPlayback } from '../playback/resetItem';
+import { useI18n } from '../i18n/I18nProvider';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
 import { displayTitle } from '../ui/displayTitle';
+import { directionalIcon } from '../ui/direction';
 import { InlineBanner } from '../ui/InlineBanner';
 import { PlaybackDock } from '../ui/PlaybackDock';
 import { AboutSheet } from '../ui/AboutSheet';
+import { LanguageSheet } from '../ui/LanguagePicker';
 import { NavigationMenu } from '../ui/NavigationMenu';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
 import { ResetProgressSheet } from '../ui/ResetProgressSheet';
@@ -62,13 +64,13 @@ function loadLibrary(query: string): { rows: Row[]; resume: AudioItem[]; todayMs
   };
 }
 
-function summaryText(summary: ImportSummary): string {
+function summaryText(summary: ImportSummary, t: ReturnType<typeof useI18n>['t']): string {
   const parts = [
-    summary.added ? `Added ${summary.added}` : '',
-    summary.updated ? `Updated ${summary.updated}` : '',
-    summary.unreadable ? `Unreadable ${summary.unreadable}` : '',
+    summary.added ? t('added', { count: summary.added }) : '',
+    summary.updated ? t('updatedCount', { count: summary.updated }) : '',
+    summary.unreadable ? t('unreadableCount', { count: summary.unreadable }) : '',
   ].filter(Boolean);
-  return parts.length ? parts.join(' · ') : 'No audio files in that selection.';
+  return parts.length ? parts.join(' · ') : t('noAudioInSelection');
 }
 
 export function LibraryScreen({
@@ -89,6 +91,8 @@ export function LibraryScreen({
   const [resetTarget, setResetTarget] = useState<AudioItem | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const { t, clock, hours, isRtl, align, language } = useI18n();
   const playing = useIsPlaying();
   const progress = useProgress(playing ? 0.5 : 30);
   const livePositionMs = progress.position * 1000;
@@ -162,11 +166,11 @@ export function LibraryScreen({
     try {
       const summary = await importAudioFiles();
       if (summary) {
-        setStatus(summaryText(summary));
+        setStatus(summaryText(summary, t));
         setRevision((value) => value + 1);
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Could not import audio.');
+      setStatus(error instanceof Error ? error.message : t('couldNotImport'));
     } finally {
       setBusy(false);
     }
@@ -176,10 +180,10 @@ export function LibraryScreen({
     setBusy(true);
     try {
       const found = await locateAudioFile(itemId);
-      setStatus(found ? 'File linked. Notes stay on this lesson.' : 'Could not read that file.');
+      setStatus(found ? t('fileLinked') : t('couldNotReadFile'));
       setRevision((value) => value + 1);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Could not locate the file.');
+      setStatus(error instanceof Error ? error.message : t('couldNotLocate'));
     } finally {
       setBusy(false);
     }
@@ -190,12 +194,12 @@ export function LibraryScreen({
       <View style={styles.screen}>
       <ScreenHeader
         title="AudioNote"
-        subtitle={`Today · ${formatHours(todayLabelMs)} listened`}
+        subtitle={t('todayListened', { time: hours(todayLabelMs) })}
         onMenu={() => setMenuOpen(true)}
         actions={[
           {
             icon: 'add-circle-outline',
-            label: 'Import audio',
+            label: t('importAudio'),
             disabled: busy,
             onPress: () => void onImport(),
           },
@@ -207,15 +211,15 @@ export function LibraryScreen({
         items={[
           {
             icon: 'folder-open-outline',
-            label: 'Import audio',
-            detail: 'Add files from your device',
+            label: t('importAudio'),
+            detail: t('addFiles'),
             disabled: busy,
             onPress: () => void onImport(),
           },
           {
             icon: 'headset-outline',
-            label: 'Now playing',
-            detail: playerTitle ? displayTitle(playerTitle, 32) : 'Open a lesson first',
+            label: t('nowPlaying'),
+            detail: playerTitle ? displayTitle(playerTitle, 32, t('untitled')) : t('openLessonFirst'),
             disabled: !playerItemId,
             onPress: () => {
               if (playerItemId) {
@@ -225,35 +229,42 @@ export function LibraryScreen({
           },
           {
             icon: 'time-outline',
-            label: "Today's listening",
-            detail: formatHours(todayLabelMs),
+            label: t('todaysListening'),
+            detail: hours(todayLabelMs),
             disabled: true,
             onPress: () => undefined,
           },
           {
             icon: 'albums-outline',
-            label: 'Listening history',
-            detail: 'Portions you have heard',
+            label: t('listeningHistory'),
+            detail: t('portionsYouHeard'),
             onPress: () => navigation.navigate({ name: 'ListenHistory', params: {}, merge: false }),
           },
           {
+            icon: 'language-outline',
+            label: t('language'),
+            detail: language?.nativeName,
+            onPress: () => setLanguageOpen(true),
+          },
+          {
             icon: 'information-circle-outline',
-            label: 'About AudioNote',
-            detail: 'GitHub, contribute, issues, features',
+            label: t('about'),
+            detail: t('aboutMenuDetail'),
             onPress: () => setAboutOpen(true),
           },
         ]}
       />
       <AboutSheet visible={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <LanguageSheet visible={languageOpen} onClose={() => setLanguageOpen(false)} />
       <View style={styles.toolbar}>
         <View style={styles.searchWrap}>
           <Ionicons name="search" size={18} color={colors.muted} style={styles.searchIcon} />
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search titles"
+            placeholder={t('searchTitles')}
             placeholderTextColor={colors.muted}
-            style={styles.search}
+            style={[styles.search, align]}
             autoCorrect={false}
             autoCapitalize="none"
             clearButtonMode="while-editing"
@@ -266,7 +277,7 @@ export function LibraryScreen({
           style={[styles.importChip, busy && styles.disabled]}
         >
           <Ionicons name="folder-open-outline" size={18} color={colors.background} />
-          <Text style={styles.importText}>{busy ? 'Working…' : 'Import'}</Text>
+          <Text style={styles.importText}>{busy ? t('working') : t('import')}</Text>
         </Pressable>
       </View>
       {status ? <InlineBanner message={status} tone="success" onDismiss={() => setStatus(null)} /> : null}
@@ -282,17 +293,17 @@ export function LibraryScreen({
           <>
             {resume.length ? (
               <View style={styles.resumeBlock}>
-                <Text style={styles.section}>Continue listening</Text>
+                <Text style={[styles.section, align]}>{t('continueListening')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.resumeScroll}>
                   {resume.map((item) => {
                     const resumeMs = item.id === playerItemId ? livePositionMs : item.positionMs;
                     return (
                       <AppPressable key={item.id} haptic onPress={() => openItem(item)} style={styles.resumeCard}>
                         <ArtworkAvatar title={item.title} size={36} />
-                        <Text numberOfLines={2} style={styles.resumeTitle}>
-                          {displayTitle(item.title)}
+                        <Text numberOfLines={2} style={[styles.resumeTitle, align]}>
+                          {displayTitle(item.title, 44, t('untitled'))}
                         </Text>
-                        <Text style={styles.meta}>Resume at {formatClock(resumeMs)}</Text>
+                        <Text style={[styles.meta, align]}>{t('resumeAt', { time: clock(resumeMs) })}</Text>
                       </AppPressable>
                     );
                   })}
@@ -300,8 +311,8 @@ export function LibraryScreen({
               </View>
             ) : null}
             {rows.length ? (
-              <Text style={styles.listHeading}>
-                All lessons · {rows.length}
+              <Text style={[styles.listHeading, align]}>
+                {t('allLessons', { count: rows.length })}
               </Text>
             ) : null}
           </>
@@ -309,11 +320,9 @@ export function LibraryScreen({
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
             <Ionicons name="musical-notes-outline" size={40} color={colors.line} />
-            <Text style={styles.emptyTitle}>{applied.trim() ? 'No matches' : 'Your library is empty'}</Text>
+            <Text style={styles.emptyTitle}>{applied.trim() ? t('noMatches') : t('libraryEmpty')}</Text>
             <Text style={styles.empty}>
-              {applied.trim()
-                ? 'Try a different search term.'
-                : 'Import a lesson. Files stay where they are, and notes stay with each entry.'}
+              {applied.trim() ? t('tryDifferentSearch') : t('emptyLibraryBody')}
             </Text>
           </View>
         }
@@ -343,23 +352,23 @@ export function LibraryScreen({
                   <ArtworkAvatar title={item.title} size={52} />
                   <View style={styles.cardBody}>
                     <View style={styles.titleRow}>
-                      <Text numberOfLines={2} style={styles.cardTitle}>
-                        {displayTitle(item.title)}
+                      <Text numberOfLines={2} style={[styles.cardTitle, align]}>
+                        {displayTitle(item.title, 44, t('untitled'))}
                       </Text>
                       {isActive ? (
                         <View style={styles.nowBadge}>
-                          <Text style={styles.nowBadgeText}>Playing</Text>
+                          <Text style={styles.nowBadgeText}>{t('playing')}</Text>
                         </View>
                       ) : null}
                     </View>
                     <View style={styles.metaRow}>
-                      <Text style={styles.formatPill}>{(item.format ?? 'audio').toUpperCase()}</Text>
-                      <Text style={styles.meta}>
-                        {item.durationMs ? formatClock(item.durationMs) : '—'}
-                        {item.durationMs ? ` · ${Math.round(heardFraction * 100)}% heard` : ''}
+                      <Text style={styles.formatPill}>{(item.format ?? t('audioWord')).toUpperCase()}</Text>
+                      <Text style={[styles.meta, align]}>
+                        {item.durationMs ? clock(item.durationMs) : '—'}
+                        {item.durationMs ? ` · ${t('heardPercent', { percent: Math.round(heardFraction * 100) })}` : ''}
                       </Text>
                     </View>
-                    <Text style={styles.positionMeta}>Position · {formatClock(rowPositionMs)}</Text>
+                    <Text style={[styles.positionMeta, align]}>{t('positionAt', { time: clock(rowPositionMs) })}</Text>
                     <View style={styles.track}>
                       <View style={[styles.heard, { width: `${heardFraction * 100}%` }]} />
                       <View style={[styles.position, { left: `${positionFraction * 100}%` }]} />
@@ -367,11 +376,11 @@ export function LibraryScreen({
                     {item.missing ? (
                       <View style={styles.missingRow}>
                         <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
-                        <Text style={styles.missing}>File missing</Text>
+                        <Text style={styles.missing}>{t('fileMissing')}</Text>
                       </View>
                     ) : null}
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.muted} style={styles.chevron} />
+                  <Ionicons name={directionalIcon('chevron-forward', isRtl)} size={20} color={colors.muted} style={styles.chevron} />
                 </View>
               </AppPressable>
               <View style={styles.actions}>
@@ -383,17 +392,17 @@ export function LibraryScreen({
                     style={styles.actionBtn}
                   >
                     <Ionicons name="locate-outline" size={16} color={colors.accent} />
-                    <Text style={styles.actionText}>Locate</Text>
+                    <Text style={styles.actionText}>{t('locate')}</Text>
                   </Pressable>
                 ) : null}
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`Reset playback progress for ${displayTitle(item.title)}`}
+                  accessibilityLabel={t('resetFor', { title: displayTitle(item.title, 44, t('untitled')) })}
                   onPress={() => setResetTarget(item)}
                   style={styles.actionBtn}
                 >
                   <Ionicons name="refresh-outline" size={16} color={colors.muted} />
-                  <Text style={styles.actionText}>Reset</Text>
+                  <Text style={styles.actionText}>{t('reset')}</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
@@ -417,7 +426,7 @@ export function LibraryScreen({
                     color={pendingDeleteId === item.id ? colors.danger : colors.muted}
                   />
                   <Text style={[styles.actionText, pendingDeleteId === item.id && styles.dangerText]}>
-                    {pendingDeleteId === item.id ? 'Confirm' : 'Delete'}
+                    {pendingDeleteId === item.id ? t('confirm') : t('delete')}
                   </Text>
                 </Pressable>
               </View>
@@ -476,7 +485,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   searchIcon: {
-    marginRight: spacing.sm,
+    marginEnd: spacing.sm,
   },
   search: {
     flex: 1,
@@ -530,7 +539,7 @@ const styles = StyleSheet.create({
   },
   resumeScroll: {
     gap: spacing.sm,
-    paddingRight: spacing.sm,
+    paddingEnd: spacing.sm,
   },
   resumeCard: {
     width: 168,
@@ -539,7 +548,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     padding: spacing.md,
     gap: spacing.sm,
-    marginRight: spacing.sm,
+    marginEnd: spacing.sm,
   },
   resumeTitle: {
     color: colors.text,
@@ -639,6 +648,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   track: {
+    direction: 'ltr',
     height: 6,
     borderRadius: 3,
     backgroundColor: colors.line,

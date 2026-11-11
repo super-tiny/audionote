@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useI18n } from '../i18n/I18nProvider';
+import { directionalIcon } from './direction';
 import { colors, spacing } from './theme';
 
 type HeaderAction = {
@@ -25,23 +27,26 @@ export function ScreenHeader({
   title,
   subtitle,
   onBack,
-  backLabel = 'Back',
+  backLabel,
   backIcon = 'chevron-back',
   onMenu,
   actions = [],
 }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
+  const { t, isRtl, align } = useI18n();
+  const resolvedBack = backLabel ?? t('back');
+  const icon = directionalIcon(backIcon, isRtl);
 
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + spacing.sm }]}>
       <View style={styles.row}>
         {onBack ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={backLabel} onPress={onBack} style={styles.back}>
-            <Ionicons name={backIcon} size={24} color={colors.accent} />
-            {backLabel ? <Text style={styles.backText}>{backLabel}</Text> : null}
+          <Pressable accessibilityRole="button" accessibilityLabel={resolvedBack || t('back')} onPress={onBack} style={styles.back}>
+            <Ionicons name={icon} size={24} color={colors.accent} />
+            {resolvedBack ? <Text style={styles.backText}>{resolvedBack}</Text> : null}
           </Pressable>
         ) : onMenu ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Open menu" onPress={onMenu} style={styles.menu}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('openMenu')} onPress={onMenu} style={styles.menu}>
             <Ionicons name="menu" size={26} color={colors.text} />
           </Pressable>
         ) : (
@@ -63,11 +68,11 @@ export function ScreenHeader({
         </View>
       </View>
       {title ? (
-        <Text style={styles.title} numberOfLines={2}>
+        <Text style={[styles.title, align]} numberOfLines={2}>
           {title}
         </Text>
       ) : null}
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      {subtitle ? <Text style={[styles.subtitle, align]}>{subtitle}</Text> : null}
     </View>
   );
 }
@@ -88,8 +93,8 @@ const styles = StyleSheet.create({
   back: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: -6,
-    paddingRight: spacing.sm,
+    marginStart: -6,
+    paddingEnd: spacing.sm,
     minHeight: 44,
   },
   backText: {
@@ -105,7 +110,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: -8,
+    marginStart: -8,
   },
   actions: {
     flexDirection: 'row',

@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ListenRange } from '../library/ranges';
-import { formatClock } from '../notes/capture';
+import { useI18n } from '../i18n/I18nProvider';
 import { readSkips, skipBy, togglePlayback } from '../playback/engine';
 import { AppPressable } from './AppPressable';
 import { ArtworkAvatar } from './ArtworkAvatar';
@@ -48,6 +48,7 @@ export function PlaybackDock(props: PlaybackDockProps) {
   const progress = useProgress(0.5);
   const insets = useSafeAreaInsets();
   const skips = readSkips();
+  const { t, clock, align } = useI18n();
   const miniDurationMs = Math.max(0, progress.duration * 1000);
   const miniPositionMs = progress.position * 1000;
 
@@ -72,23 +73,23 @@ export function PlaybackDock(props: PlaybackDockProps) {
         <Pressable accessibilityRole="button" onPress={props.onOpen} style={styles.miniMain}>
           <ArtworkAvatar title={props.title} size={44} />
           <View style={styles.miniMeta}>
-            <Text numberOfLines={1} style={styles.miniTitle}>
-              {displayTitle(props.title, 40)}
+            <Text numberOfLines={1} style={[styles.miniTitle, align]}>
+              {displayTitle(props.title, 40, t('untitled'))}
             </Text>
-            <Text style={styles.miniTime}>
-              {formatClock(miniPositionMs)}
-              {miniDurationMs ? ` / ${formatClock(miniDurationMs)}` : ''}
+            <Text style={[styles.miniTime, align]}>
+              {clock(miniPositionMs)}
+              {miniDurationMs ? ` / ${clock(miniDurationMs)}` : ''}
             </Text>
           </View>
         </Pressable>
         <View style={styles.miniControls}>
-          <AppPressable accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`} haptic onPress={onSkipBack} style={styles.controlBtn}>
+          <AppPressable accessibilityLabel={t('rewindSeconds', { count: Math.round(skips.backMs / 1000) })} haptic onPress={onSkipBack} style={styles.controlBtn}>
             <Ionicons name="play-back" size={26} color={colors.text} />
           </AppPressable>
-          <AppPressable accessibilityLabel={playing ? 'Pause' : 'Play'} haptic onPress={onPlayPause} style={styles.playBtn}>
+          <AppPressable accessibilityLabel={playing ? t('pause') : t('play')} haptic onPress={onPlayPause} style={styles.playBtn}>
             <Ionicons name={playing ? 'pause' : 'play'} size={26} color={colors.background} />
           </AppPressable>
-          <AppPressable accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`} haptic onPress={onSkipForward} style={styles.controlBtn}>
+          <AppPressable accessibilityLabel={t('skipForwardSeconds', { count: Math.round(skips.forwardMs / 1000) })} haptic onPress={onSkipForward} style={styles.controlBtn}>
             <Ionicons name="play-forward" size={26} color={colors.text} />
           </AppPressable>
         </View>
@@ -109,38 +110,38 @@ export function PlaybackDock(props: PlaybackDockProps) {
         onScrubCancel={props.onScrubCancel}
       />
       <View style={styles.times}>
-        <Text style={styles.time}>{formatClock(props.scrubMs ?? props.positionMs)}</Text>
+        <Text style={styles.time}>{clock(props.scrubMs ?? props.positionMs)}</Text>
         {props.onOpenJumps ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={props.jumpsCount ? `Jumps, ${props.jumpsCount}` : 'Jumps'}
-            accessibilityHint="Opens positions you can return to"
+            accessibilityLabel={props.jumpsCount ? t('jumpsWithCount', { count: props.jumpsCount }) : t('jumps')}
+            accessibilityHint={t('jumpsHint')}
             onPress={props.onOpenJumps}
             style={styles.jumpsButton}
           >
             <Ionicons name="time-outline" size={15} color={props.jumpsCount ? colors.accent : colors.muted} />
             <Text style={[styles.jumpsLabel, props.jumpsCount ? styles.jumpsLabelOn : null]}>
-              Jumps{props.jumpsCount ? ` ${props.jumpsCount}` : ''}
+              {props.jumpsCount ? t('jumpsLabelCount', { count: props.jumpsCount }) : t('jumps')}
             </Text>
           </Pressable>
         ) : null}
-        <Text style={styles.time}>{props.durationMs ? formatClock(props.durationMs) : '—'}</Text>
+        <Text style={styles.time}>{props.durationMs ? clock(props.durationMs) : '—'}</Text>
       </View>
       <View style={styles.fullControls}>
         <View style={styles.fullControlsSides}>
-          <AppPressable accessibilityLabel={`Rewind ${Math.round(skips.backMs / 1000)} seconds`} haptic onPress={onSkipBack} style={styles.controlBtn}>
+          <AppPressable accessibilityLabel={t('rewindSeconds', { count: Math.round(skips.backMs / 1000) })} haptic onPress={onSkipBack} style={styles.controlBtn}>
             <Ionicons name="play-back" size={30} color={colors.text} />
           </AppPressable>
           <View style={styles.fullControlsRight}>
-            <AppPressable accessibilityLabel={`Skip forward ${Math.round(skips.forwardMs / 1000)} seconds`} haptic onPress={onSkipForward} style={styles.controlBtn}>
+            <AppPressable accessibilityLabel={t('skipForwardSeconds', { count: Math.round(skips.forwardMs / 1000) })} haptic onPress={onSkipForward} style={styles.controlBtn}>
               <Ionicons name="play-forward" size={30} color={colors.text} />
             </AppPressable>
-            <AppPressable accessibilityLabel="Playback settings" haptic onPress={props.onOpenSettings} style={styles.settingsBtn}>
+            <AppPressable accessibilityLabel={t('playbackSettings')} haptic onPress={props.onOpenSettings} style={styles.settingsBtn}>
               <Ionicons name="settings-outline" size={24} color={colors.text} />
             </AppPressable>
           </View>
         </View>
-        <AppPressable accessibilityLabel={playing ? 'Pause' : 'Play'} haptic onPress={onPlayPause} style={styles.playBtnLarge}>
+        <AppPressable accessibilityLabel={playing ? t('pause') : t('play')} haptic onPress={onPlayPause} style={styles.playBtnLarge}>
           <Ionicons name={playing ? 'pause' : 'play'} size={32} color={colors.background} />
         </AppPressable>
       </View>
@@ -150,6 +151,7 @@ export function PlaybackDock(props: PlaybackDockProps) {
 
 const styles = StyleSheet.create({
   fullWrap: {
+    direction: 'ltr',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.line,
     backgroundColor: colors.surface,
@@ -203,6 +205,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   miniControls: {
+    direction: 'ltr',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,

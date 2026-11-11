@@ -58,15 +58,17 @@ export function parseMinutes(text: string): { ms: number | null; invalid: boolea
   return { ms: Math.round(minutes * 60_000), invalid: false };
 }
 
-export function filterProblem(filter: PortionFilter): string | null {
+export type FilterProblem = 'invalid' | 'order';
+
+export function filterProblem(filter: PortionFilter): FilterProblem | null {
   if (filter.kind !== 'custom') {
     return null;
   }
   if (filter.invalid) {
-    return 'Use minutes, such as 1.5.';
+    return 'invalid';
   }
   if (filter.minMs != null && filter.maxMs != null && filter.minMs > filter.maxMs) {
-    return 'Minimum is longer than maximum.';
+    return 'order';
   }
   return null;
 }

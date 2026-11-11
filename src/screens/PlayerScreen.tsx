@@ -17,7 +17,7 @@ import type { AudioItem, Jump, Note } from '../db/types';
 import { listenedFraction, projectHeardRanges, type ListenRange } from '../library/ranges';
 import { locateAudioFile } from '../library/import';
 import { createId } from '../media/identity';
-import { formatClock, notePositionMs } from '../notes/capture';
+import { notePositionMs } from '../notes/capture';
 import type { RootStackParamList } from '../navigation/types';
 import {
   openItem,
@@ -38,6 +38,7 @@ import {
 import type { RecordedJumpSource } from '../playback/jumpRecord';
 import { currentOpenListen, subscribeListenProgress } from '../playback/persist';
 import { resetItemPlayback } from '../playback/resetItem';
+import { useI18n } from '../i18n/I18nProvider';
 import { AppPressable } from '../ui/AppPressable';
 import { ArtworkAvatar } from '../ui/ArtworkAvatar';
 import { displayTitle } from '../ui/displayTitle';
@@ -79,6 +80,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const loopGuard = useRef(false);
+  const { t, clock, count, align } = useI18n();
 
   useEffect(() => {
     onPlayerContext(itemId, item?.title ?? null);
@@ -101,7 +103,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           setMissing(!opened);
           setItem(getItem(itemId));
           if (!opened) {
-            setMessage('The file is missing. Locate it and the notes stay on this lesson.');
+            setMessage(t('fileMissingLong'));
             return;
           }
           if (seekToken != null && seekMs != null) {
@@ -110,7 +112,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
         })
         .catch((error: unknown) => {
           if (!cancelled) {
-            setMessage(error instanceof Error ? error.message : 'Could not start playback.');
+            setMessage(error instanceof Error ? error.message : t('couldNotStart'));
           }
         });
     }
@@ -222,7 +224,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   async function onLocate(): Promise<void> {
     const found = await locateAudioFile(itemId);
     if (!found) {
-      setMessage('Could not read that file.');
+      setMessage(t('couldNotReadFile'));
       return;
     }
     const current = getItem(itemId);
@@ -230,7 +232,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     if (current) {
       const opened = await openItem(current);
       setMissing(!opened);
-      setMessage(opened ? null : 'The file is still unreadable.');
+      setMessage(opened ? null : t('fileStillUnreadable'));
     }
   }
 
@@ -258,8 +260,8 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     return (
       <ScreenBackdrop>
         <View style={styles.screen}>
-          <ScreenHeader title="Lesson unavailable" onBack={() => navigation.goBack()} backLabel="Library" />
-          <Text style={styles.message}>This lesson is no longer in the library.</Text>
+          <ScreenHeader title={t('lessonUnavailable')} onBack={() => navigation.goBack()} backLabel={t('library')} />
+          <Text style={[styles.message, align]}>{t('lessonGone')}</Text>
         </View>
       </ScreenBackdrop>
     );
@@ -276,12 +278,12 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           actions={[
             {
               icon: 'time-outline',
-              label: 'Listening history',
+              label: t('listeningHistory'),
               onPress: () => navigation.navigate({ name: 'ListenHistory', params: { itemId }, merge: false }),
             },
             {
               icon: 'options-outline',
-              label: 'Playback settings',
+              label: t('playbackSettings'),
               onPress: () => setSettingsOpen(true),
             },
           ]}
@@ -289,22 +291,22 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.hero}>
             <ArtworkAvatar title={item.title} size={200} />
-            <Text style={styles.heroTitle}>{displayTitle(item.title, 56)}</Text>
+            <Text style={styles.heroTitle}>{displayTitle(item.title, 56, t('untitled'))}</Text>
             <View style={styles.heroChips}>
-              <Text style={styles.heroChip}>{(item.format ?? 'audio').toUpperCase()}</Text>
-              <Text style={styles.heroChip}>{Math.round(heardFraction * 100)}% heard</Text>
-              <Text style={styles.heroChip}>{notes.length} notes</Text>
-              {missing ? <Text style={[styles.heroChip, styles.heroChipDanger]}>Missing file</Text> : null}
+              <Text style={styles.heroChip}>{(item.format ?? t('audioWord')).toUpperCase()}</Text>
+              <Text style={styles.heroChip}>{t('heardPercent', { percent: Math.round(heardFraction * 100) })}</Text>
+              <Text style={styles.heroChip}>{count('notes', notes.length)}</Text>
+              {missing ? <Text style={[styles.heroChip, styles.heroChipDanger]}>{t('missingFile')}</Text> : null}
             </View>
             <AppPressable
               accessibilityRole="button"
-              accessibilityLabel="Reset playback progress"
+              accessibilityLabel={t('resetPlaybackProgress')}
               haptic
               onPress={() => setResetOpen(true)}
               style={styles.resetButton}
             >
               <Ionicons name="refresh-outline" size={16} color={colors.muted} />
-              <Text style={styles.resetButtonText}>Reset progress</Text>
+              <Text style={styles.resetButtonText}>{t('resetProgress')}</Text>
             </AppPressable>
           </View>
 
@@ -312,7 +314,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             <View style={styles.loopBanner}>
               <Ionicons name="repeat" size={16} color={colors.accent} />
               <Text style={styles.loopLabel}>
-                Loop {formatClock(loop.aMs)} – {formatClock(loop.bMs)}
+                {t('loopRange', { start: clock(loop.aMs), end: clock(loop.bMs) })}
               </Text>
             </View>
           ) : null}
@@ -321,19 +323,19 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           {missing ? (
             <Pressable accessibilityRole="button" onPress={() => void onLocate()} style={styles.primary}>
               <Ionicons name="locate-outline" size={18} color={colors.background} />
-              <Text style={styles.primaryText}>Locate file</Text>
+              <Text style={styles.primaryText}>{t('locateFile')}</Text>
             </Pressable>
           ) : null}
 
           <View style={styles.notesCard}>
-            <Text style={styles.notesTitle}>Notes</Text>
+            <Text style={[styles.notesTitle, align]}>{t('notes')}</Text>
             <View style={styles.composer}>
               <TextInput
                 value={draft}
                 onChangeText={setDraft}
-                placeholder={`Note at ${formatClock(notePositionMs(positionMs))}`}
+                placeholder={t('noteAt', { time: clock(notePositionMs(positionMs)) })}
                 placeholderTextColor={colors.muted}
-                style={styles.noteInput}
+                style={[styles.noteInput, align]}
                 multiline
               />
               <AppPressable
@@ -345,11 +347,11 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
                 }}
                 style={styles.addNote}
               >
-                <Text style={styles.addNoteText}>Add</Text>
+                <Text style={styles.addNoteText}>{t('add')}</Text>
               </AppPressable>
             </View>
             {notes.length === 0 ? (
-              <Text style={styles.noteEmpty}>Notes land a few seconds before the moment you tap Add.</Text>
+              <Text style={[styles.noteEmpty, align]}>{t('notesHint')}</Text>
             ) : (
               notes.map((note) => (
                 <View key={note.id} style={styles.noteRow}>
@@ -362,8 +364,8 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
                     }}
                     style={styles.noteMain}
                   >
-                    <Text style={styles.noteTime}>{formatClock(note.positionMs)}</Text>
-                    <Text style={styles.noteText}>{note.text}</Text>
+                    <Text style={styles.noteTime}>{clock(note.positionMs)}</Text>
+                    <Text style={[styles.noteText, align]}>{note.text}</Text>
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
@@ -377,7 +379,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
                       }
                     }}
                   >
-                    <Text style={styles.deleteNote}>{pendingDeleteId === note.id ? 'Confirm' : 'Delete'}</Text>
+                    <Text style={styles.deleteNote}>{pendingDeleteId === note.id ? t('confirm') : t('delete')}</Text>
                   </Pressable>
                 </View>
               ))

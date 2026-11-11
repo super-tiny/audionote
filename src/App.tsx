@@ -1,13 +1,15 @@
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
-import { AppState, StyleSheet } from 'react-native';
+import { AppState, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { I18nProvider, useI18n } from './i18n/I18nProvider';
 import { RootNavigator } from './navigation/RootNavigator';
 import { flushJumpHistory } from './playback/jumpHistory';
 import { flushProgress } from './playback/persist';
+import { LanguageGate } from './ui/LanguagePicker';
 import { colors } from './ui/theme';
 
 export default function App() {
@@ -28,10 +30,24 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
-        <RootNavigator />
+        <I18nProvider>
+          <StatusBar style="light" />
+          <LocalizedApp />
+        </I18nProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function LocalizedApp() {
+  const { locale, setLocale, direction } = useI18n();
+  if (!locale) {
+    return <LanguageGate onSelect={setLocale} />;
+  }
+  return (
+    <View style={[styles.root, { direction }]}>
+      <RootNavigator />
+    </View>
   );
 }
 
