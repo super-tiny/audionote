@@ -14,7 +14,8 @@ import {
   LONG_MIN_MS,
   parseMinutes,
   portionDurationMs,
-  selectPortions,
+  portionMatches,
+  sortPortions,
   type DurationBand,
   type ListenPortion,
   type ListenSortKey,
@@ -70,6 +71,40 @@ function formatListenedAt(ms: number, locale: string): string {
   });
 }
 
+function samePortions(left: readonly ListenPortion[], right: readonly ListenPortion[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    const previous = left[index];
+    const next = right[index];
+    if (
+      !previous ||
+      !next ||
+      previous.id !== next.id ||
+      previous.startMs !== next.startMs ||
+      previous.endMs !== next.endMs ||
+      previous.sessionAt !== next.sessionAt ||
+      previous.itemId !== next.itemId
+    ) {
+      return false;
+    }
+    const previousReplays = previous.replays ?? [];
+    const nextReplays = next.replays ?? [];
+    if (previousReplays.length !== nextReplays.length) {
+      return false;
+    }
+    for (let replayIndex = 0; replayIndex < previousReplays.length; replayIndex += 1) {
+      const before = previousReplays[replayIndex];
+      const after = nextReplays[replayIndex];
+      if (!before || !after || before.startMs !== after.startMs || before.endMs !== after.endMs) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function buildFilter(kind: PortionFilter['kind'], minText: string, maxText: string): PortionFilter {
   if (kind !== 'custom') {
     return { kind };
@@ -98,7 +133,8 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
   const lesson = itemId ? getItem(itemId) : null;
 
   const reload = useCallback(() => {
-    setPortions(listListenHistory(itemId));
+    const next = listListenHistory(itemId);
+    setPortions((current) => (samePortions(current, next) ? current : next));
   }, [itemId]);
 
   useFocusEffect(
@@ -121,7 +157,12 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
   const problem = filterProblem(filter);
   const problemText = problem === 'invalid' ? t('minutesInvalid') : problem === 'order' ? t('minAboveMax') : null;
   const visible = useMemo(
-    () => selectPortions(portions, filter, sortKey, direction),
+    () =>
+      sortPortions(
+        portions.filter((portion) => portionMatches(portionDurationMs(portion), filter)),
+        sortKey,
+        direction,
+      ),
     [portions, filter, sortKey, direction],
   );
   const selectedFilter = FILTER_TEXT[kind];
@@ -283,16 +324,25 @@ function PortionRow({
   const end = clock(portion.endMs);
   const length = clock(durationMs);
   const title = displayTitle(portion.title, 44, t('untitled'));
+  const replays = portion.replays ?? [];
+  const replayLabel = replays.map((span) => `${clock(span.startMs)}–${clock(span.endMs)}`).join(', ');
   return (
     <AppPressable
       accessibilityRole="button"
-      accessibilityLabel={t('portionA11y', { title, band: bandLabel, start, end, length })}
+      accessibilityLabel={
+        replays.length > 0
+          ? t('portionA11yReplay', { title, band: bandLabel, start, end, length, spans: replayLabel })
+          : t('portionA11y', { title, band: bandLabel, start, end, length })
+      }
       haptic
       onPress={onPress}
-      style={styles.card}
+      style={[styles.card, replays.length > 0 && styles.cardImportant]}
     >
       <View style={styles.cardTop}>
-        <Text style={[styles.badge, { color: BAND_COLOR[band] }]}>{bandLabel}</Text>
+        <View style={styles.badges}>
+          <Text style={[styles.badge, { color: BAND_COLOR[band] }]}>{bandLabel}</Text>
+          {replays.length > 0 ? <Text style={styles.importantBadge}>{t('important')}</Text> : null}
+        </View>
         <Text style={styles.length}>{length}</Text>
       </View>
       {showTitle ? (
@@ -308,6 +358,9 @@ function PortionRow({
       <View style={styles.meterTrack}>
         <View style={[styles.meterFill, { width: `${Math.max(meter * 100, 6)}%`, backgroundColor: BAND_COLOR[band] }]} />
       </View>
+      {replays.length > 0 ? (
+        <Text style={[styles.replay, align]}>{t('playedAgain', { spans: replayLabel })}</Text>
+      ) : null}
       <Text style={[styles.when, align]}>{t('heardWhen', { when: formatListenedAt(portion.sessionAt, locale ?? 'en') })}</Text>
     </AppPressable>
   );
@@ -430,12 +483,28 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
   },
+  cardImportant: {
+    borderColor: colors.important,
+  },
   cardTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  badges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 1,
   },
   badge: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  importantBadge: {
+    color: colors.important,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.2,
@@ -482,6 +551,12 @@ const styles = StyleSheet.create({
   meterFill: {
     height: 6,
     borderRadius: 3,
+  },
+  replay: {
+    color: colors.important,
+    fontSize: 13,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   when: {
     color: colors.muted,

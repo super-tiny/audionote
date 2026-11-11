@@ -11,9 +11,12 @@ import {
   insertNote,
   listNotes,
   markMissing,
+  marksForItem,
   rangesForItem,
+  subscribeListenMarks,
 } from '../db/library';
 import type { AudioItem, Jump, Note } from '../db/types';
+import type { ReplaySpan } from '../library/listenHistory';
 import { listenedFraction, projectHeardRanges, type ListenRange } from '../library/ranges';
 import { locateAudioFile } from '../library/import';
 import { createId } from '../media/identity';
@@ -36,6 +39,7 @@ import {
   subscribeJumpHistory,
 } from '../playback/jumpHistory';
 import type { RecordedJumpSource } from '../playback/jumpRecord';
+import { isHighlightHintHidden, setHighlightHintHidden } from '../playback/highlightHint';
 import { PlayerClockProvider, usePlayerClock } from '../playback/PlayerClock';
 import { currentOpenListen, subscribeListenProgress } from '../playback/persist';
 import { resetItemPlayback } from '../playback/resetItem';
@@ -144,6 +148,10 @@ function PlayerDockHost({
   jumpsCount,
   onOpenJumps,
   onOpenSettings,
+  important,
+  importantHintHidden,
+  onDismissImportantHint,
+  onShowImportantHint,
 }: {
   itemId: string;
   title: string;
@@ -158,6 +166,10 @@ function PlayerDockHost({
   jumpsCount: number;
   onOpenJumps: () => void;
   onOpenSettings: () => void;
+  important: readonly ListenRange[];
+  importantHintHidden: boolean;
+  onDismissImportantHint: () => void;
+  onShowImportantHint: () => void;
 }) {
   const { positionMs, durationMs, playing } = usePlayerClock();
   const open = currentOpenListen();
@@ -171,6 +183,10 @@ function PlayerDockHost({
       durationMs={Math.max(durationMs, fallbackDurationMs ?? 0)}
       positionMs={playhead}
       heard={visible}
+      important={important}
+      importantHintHidden={importantHintHidden}
+      onDismissImportantHint={onDismissImportantHint}
+      onShowImportantHint={onShowImportantHint}
       markers={markers}
       scrubMs={scrubMs}
       onScrub={onScrub}
@@ -199,6 +215,7 @@ function PlayerScreenBody({ navigation, route, onPlayerContext }: PlayerScreenPr
   const [jumps, setJumps] = useState<Jump[]>(() => listJumps(itemId));
   const [jumpsOpen, setJumpsOpen] = useState(false);
   const [heard, setHeard] = useState<ListenRange[]>(() => rangesForItem(itemId));
+  const [important, setImportant] = useState<ReplaySpan[]>(() => marksForItem(itemId));
   const [skips, setSkips] = useState(() => readSkips());
   const [speed, setSpeedState] = useState(item?.speed ?? 1);
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
@@ -210,7 +227,18 @@ function PlayerScreenBody({ navigation, route, onPlayerContext }: PlayerScreenPr
   const [message, setMessage] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [highlightHintHidden, setHighlightHintHiddenState] = useState(() => isHighlightHintHidden());
   const { t, clock, count, align } = useI18n();
+
+  function dismissHighlightHint(): void {
+    setHighlightHintHidden(true);
+    setHighlightHintHiddenState(true);
+  }
+
+  function showHighlightHint(): void {
+    setHighlightHintHidden(false);
+    setHighlightHintHiddenState(false);
+  }
 
   useEffect(() => {
     onPlayerContext(itemId, item?.title ?? null);
@@ -222,6 +250,7 @@ function PlayerScreenBody({ navigation, route, onPlayerContext }: PlayerScreenPr
     setItem(current);
     setNotes(listNotes(itemId));
     setHeard(rangesForItem(itemId));
+    setImportant(marksForItem(itemId));
     setScrubMs(null);
     if (current) {
       setSpeedState(current.speed || 1);
@@ -287,6 +316,11 @@ function PlayerScreenBody({ navigation, route, onPlayerContext }: PlayerScreenPr
         acceptStored(update.open);
       }
     });
+    const unsubscribeMarks = subscribeListenMarks((changedId) => {
+      if (changedId === itemId) {
+        setImportant(marksForItem(itemId));
+      }
+    });
     const handle = setInterval(() => {
       setItem((existing) => {
         const next = getItem(itemId);
@@ -305,6 +339,7 @@ function PlayerScreenBody({ navigation, route, onPlayerContext }: PlayerScreenPr
     }, 5000);
     return () => {
       unsubscribe();
+      unsubscribeMarks();
       clearInterval(handle);
     };
   }, [itemId]);
@@ -370,6 +405,7 @@ function PlayerScreenBody({ navigation, route, onPlayerContext }: PlayerScreenPr
   function confirmResetProgress(): void {
     resetItemPlayback(itemId);
     setHeard([]);
+    setImportant([]);
     setJumps([]);
     setScrubMs(null);
     const current = getItem(itemId);
@@ -520,6 +556,10 @@ function PlayerScreenBody({ navigation, route, onPlayerContext }: PlayerScreenPr
           title={item.title}
           fallbackDurationMs={item.durationMs}
           stored={heard}
+          important={important}
+          importantHintHidden={highlightHintHidden}
+          onDismissImportantHint={dismissHighlightHint}
+          onShowImportantHint={showHighlightHint}
           scrubMs={scrubMs}
           markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
           onScrub={setScrubMs}

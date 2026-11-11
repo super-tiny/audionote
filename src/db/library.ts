@@ -1,7 +1,40 @@
-import type { ListenPortion } from '../library/listenHistory';
+import {
+  clipReplaySpans,
+  pickContinuation,
+  repeatedSections,
+  SEQUENTIAL_START_GAP_MS,
+  type ListenPortion,
+  type ReplaySpan,
+} from '../library/listenHistory';
 import { likePattern } from '../library/search';
 import { AUDIO_SELECT, mapAudioItem, type AudioItem, type Note, type StoredRange } from './types';
 import { getDatabase } from './open';
+
+type CachedRanges = {
+  ids: number[];
+  rows: StoredRange[];
+};
+
+const rangeCache = new Map<string, CachedRanges>();
+const markCache = new Map<string, ReplaySpan[]>();
+const markListeners = new Set<(itemId: string) => void>();
+
+function dropRangeCache(itemId: string): void {
+  rangeCache.delete(itemId);
+}
+
+function notifyMarks(itemId: string): void {
+  for (const listener of markListeners) {
+    listener(itemId);
+  }
+}
+
+export function subscribeListenMarks(listener: (itemId: string) => void): () => void {
+  markListeners.add(listener);
+  return () => {
+    markListeners.delete(listener);
+  };
+}
 
 const ITEM_COLUMNS = `
   audio_item.id,
@@ -127,9 +160,13 @@ export function resetStoredProgress(itemId: string, now = Date.now()): void {
   const db = getDatabase();
   db.withTransactionSync(() => {
     db.runSync('DELETE FROM listen_range WHERE item_id = ?', itemId);
+    db.runSync('DELETE FROM listen_mark WHERE item_id = ?', itemId);
     db.runSync('DELETE FROM jump WHERE item_id = ?', itemId);
     db.runSync('UPDATE playback_state SET position_ms = 0, updated_at = ? WHERE item_id = ?', now, itemId);
   });
+  dropRangeCache(itemId);
+  markCache.set(itemId, []);
+  notifyMarks(itemId);
 }
 
 export function savePlayback(id: string, positionMs: number, speed: number, now = Date.now()): void {
@@ -147,26 +184,190 @@ export function savePlayback(id: string, positionMs: number, speed: number, now 
   );
 }
 
-export function insertListenRange(itemId: string, startMs: number, endMs: number, sessionAt: number): number {
-  const result = getDatabase().runSync(
-    'INSERT INTO listen_range (item_id, start_ms, end_ms, session_at) VALUES (?, ?, ?, ?)',
+/**
+ * Inserts a listen, or extends the stored row it continues.
+ * Sequential passes become one row here, so reads do not merge them again.
+ * Returns the row that now holds this pass.
+ */
+export function saveListenRange(itemId: string, startMs: number, endMs: number, sessionAt: number): number {
+  const start = Math.round(startMs);
+  const end = Math.round(endMs);
+  const db = getDatabase();
+  const candidates = db.getAllSync<{ id: number; start_ms: number; end_ms: number; anchor_at: number }>(
+    `SELECT id, start_ms, end_ms, anchor_at
+     FROM listen_range
+     WHERE item_id = ? AND anchor_at > ? AND anchor_at <= ?`,
     itemId,
-    Math.round(startMs),
-    Math.round(endMs),
+    sessionAt - SEQUENTIAL_START_GAP_MS,
     sessionAt,
   );
+  const host = pickContinuation(
+    candidates.map((row) => ({
+      id: row.id,
+      startMs: row.start_ms,
+      endMs: row.end_ms,
+      anchorAt: row.anchor_at,
+    })),
+    { startMs: start, endMs: end, sessionAt },
+  );
+  if (host) {
+    db.runSync(
+      'UPDATE listen_range SET start_ms = MIN(start_ms, ?), end_ms = ?, anchor_at = ? WHERE id = ?',
+      start,
+      Math.max(host.endMs, end),
+      sessionAt,
+      host.id,
+    );
+    dropRangeCache(itemId);
+    return host.id;
+  }
+  const result = db.runSync(
+    'INSERT INTO listen_range (item_id, start_ms, end_ms, session_at, anchor_at) VALUES (?, ?, ?, ?, ?)',
+    itemId,
+    start,
+    end,
+    sessionAt,
+    sessionAt,
+  );
+  dropRangeCache(itemId);
   return Number(result.lastInsertRowId);
 }
 
-export function updateListenRangeEnd(id: number, endMs: number): void {
-  getDatabase().runSync('UPDATE listen_range SET end_ms = ? WHERE id = ?', Math.round(endMs), id);
+export function updateListenRangeEnd(id: number, endMs: number, itemId: string): void {
+  const end = Math.round(endMs);
+  getDatabase().runSync('UPDATE listen_range SET end_ms = ? WHERE id = ?', end, id);
+  const cached = rangeCache.get(itemId);
+  if (!cached) {
+    return;
+  }
+  const index = cached.ids.indexOf(id);
+  if (index < 0) {
+    dropRangeCache(itemId);
+    return;
+  }
+  const current = cached.rows[index];
+  if (!current || current.endMs === end) {
+    return;
+  }
+  const rows = cached.rows.slice();
+  rows[index] = { ...current, endMs };
+  rangeCache.set(itemId, { ids: cached.ids, rows });
+}
+
+function loadRanges(itemId: string): CachedRanges {
+  const cached = rangeCache.get(itemId);
+  if (cached) {
+    return cached;
+  }
+  const rows = getDatabase().getAllSync<{ id: number; start_ms: number; end_ms: number; session_at: number }>(
+    'SELECT id, start_ms, end_ms, session_at FROM listen_range WHERE item_id = ? ORDER BY start_ms, id',
+    itemId,
+  );
+  const loaded: CachedRanges = {
+    ids: rows.map((row) => row.id),
+    rows: rows.map((row) => ({ startMs: row.start_ms, endMs: row.end_ms, sessionAt: row.session_at })),
+  };
+  rangeCache.set(itemId, loaded);
+  return loaded;
 }
 
 export function rangesForItem(itemId: string): StoredRange[] {
-  return getDatabase().getAllSync<{ start_ms: number; end_ms: number; session_at: number }>(
-    'SELECT start_ms, end_ms, session_at FROM listen_range WHERE item_id = ? ORDER BY start_ms',
+  return loadRanges(itemId).rows;
+}
+
+/** How far this row can grow before the saved important spans need a full rebuild. */
+export function rangeGrowthBounds(
+  itemId: string,
+  rowId: number,
+  startMs: number,
+  endMs: number,
+): { overlapCapMs: number | null; nextRangeStartMs: number } {
+  const cached = loadRanges(itemId);
+  let overlapCapMs: number | null = null;
+  let nextRangeStartMs = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < cached.ids.length; index += 1) {
+    if (cached.ids[index] === rowId) {
+      continue;
+    }
+    const range = cached.rows[index];
+    if (!range) {
+      continue;
+    }
+    if (range.endMs > startMs && range.startMs < endMs) {
+      overlapCapMs = overlapCapMs == null ? range.endMs : Math.max(overlapCapMs, range.endMs);
+    } else if (range.startMs >= endMs && range.startMs < nextRangeStartMs) {
+      nextRangeStartMs = range.startMs;
+    }
+  }
+  return { overlapCapMs, nextRangeStartMs };
+}
+
+export function marksForItem(itemId: string): ReplaySpan[] {
+  const cached = markCache.get(itemId);
+  if (cached) {
+    return cached;
+  }
+  const spans = getDatabase()
+    .getAllSync<{ start_ms: number; end_ms: number }>(
+      'SELECT start_ms, end_ms FROM listen_mark WHERE item_id = ? ORDER BY start_ms, end_ms',
+      itemId,
+    )
+    .map((row) => ({ startMs: row.start_ms, endMs: row.end_ms }));
+  markCache.set(itemId, spans);
+  return spans;
+}
+
+/** Rewrites important spans from the stored rows. Call when a row is added, closed, or crosses another row. */
+export function syncListenMarks(itemId: string): void {
+  const spans = repeatedSections(rangesForItem(itemId));
+  const db = getDatabase();
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM listen_mark WHERE item_id = ?', itemId);
+    for (const span of spans) {
+      db.runSync(
+        'INSERT INTO listen_mark (item_id, start_ms, end_ms) VALUES (?, ?, ?)',
+        itemId,
+        span.startMs,
+        span.endMs,
+      );
+    }
+  });
+  markCache.set(itemId, spans);
+  notifyMarks(itemId);
+}
+
+/** Extends important spans that currently end where this replay ended, without resorting every range. */
+export function extendListenMarks(itemId: string, fromEndMs: number, toEndMs: number): void {
+  if (toEndMs <= fromEndMs) {
+    return;
+  }
+  const result = getDatabase().runSync(
+    'UPDATE listen_mark SET end_ms = ? WHERE item_id = ? AND end_ms = ? AND start_ms < ?',
+    toEndMs,
     itemId,
-  ).map((row) => ({ startMs: row.start_ms, endMs: row.end_ms, sessionAt: row.session_at }));
+    fromEndMs,
+    toEndMs,
+  );
+  const cached = markCache.get(itemId);
+  if (!cached) {
+    if (result.changes > 0) {
+      notifyMarks(itemId);
+    }
+    return;
+  }
+  let changed = false;
+  const next = cached.map((span) => {
+    if (span.endMs === fromEndMs && span.startMs < toEndMs) {
+      changed = true;
+      return { startMs: span.startMs, endMs: toEndMs };
+    }
+    return span;
+  });
+  if (!changed && result.changes === 0) {
+    return;
+  }
+  markCache.set(itemId, changed ? next : cached);
+  notifyMarks(itemId);
 }
 
 /** SQLite on Android rejects statements with too many bound variables. */
@@ -227,7 +428,7 @@ export function listListenHistory(itemId: string | null): ListenPortion[] {
   const rows = itemId
     ? getDatabase().getAllSync<ListenHistoryRow>(sql, itemId)
     : getDatabase().getAllSync<ListenHistoryRow>(sql);
-  return rows.map((row) => ({
+  const portions = rows.map((row) => ({
     id: row.id,
     itemId: row.item_id,
     title: row.title,
@@ -235,6 +436,49 @@ export function listListenHistory(itemId: string | null): ListenPortion[] {
     endMs: row.end_ms,
     sessionAt: row.session_at,
   }));
+  const marks = loadMarks(itemId, portions);
+  return portions.map((portion) => ({
+    ...portion,
+    replays: clipReplaySpans(portion, marks.get(portion.itemId) ?? []),
+  }));
+}
+
+function loadMarks(itemId: string | null, portions: readonly ListenPortion[]): Map<string, ReplaySpan[]> {
+  if (itemId) {
+    return new Map([[itemId, marksForItem(itemId)]]);
+  }
+  const itemIds = new Set(portions.map((portion) => portion.itemId));
+  const marks = new Map<string, ReplaySpan[]>();
+  let missing = false;
+  for (const id of itemIds) {
+    const cached = markCache.get(id);
+    if (!cached) {
+      missing = true;
+      break;
+    }
+    marks.set(id, cached);
+  }
+  if (!missing) {
+    return marks;
+  }
+  const loaded = new Map<string, ReplaySpan[]>();
+  for (const id of itemIds) {
+    loaded.set(id, []);
+  }
+  const rows = getDatabase().getAllSync<{ item_id: string; start_ms: number; end_ms: number }>(
+    'SELECT item_id, start_ms, end_ms FROM listen_mark ORDER BY item_id, start_ms, end_ms',
+  );
+  for (const row of rows) {
+    const spans = loaded.get(row.item_id);
+    if (!spans) {
+      continue;
+    }
+    spans.push({ startMs: row.start_ms, endMs: row.end_ms });
+  }
+  for (const [id, spans] of loaded) {
+    markCache.set(id, spans);
+  }
+  return loaded;
 }
 
 type ListenHistoryRow = {
