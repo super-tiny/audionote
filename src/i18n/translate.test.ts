@@ -31,6 +31,10 @@ test('arabic and persian lay out right to left', () => {
     LANGUAGES.map((language) => language.code),
     ['en', 'fr', 'de', 'ar', 'fa'],
   );
+  assert.deepEqual(
+    LANGUAGES.map((language) => language.flag),
+    ['🇬🇧', '🇫🇷', '🇩🇪', '🇸🇦', '🇮🇷'],
+  );
 });
 
 test('every language has the same messages', () => {

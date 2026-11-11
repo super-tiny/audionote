@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useIsPlaying, useProgress } from '@rntp/player';
+import { useEffect, useRef, useState } from 'react';
+import TrackPlayer from '@rntp/player';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { clearJumps, deleteJump, listJumps } from '../db/jumps';
@@ -36,6 +36,7 @@ import {
   subscribeJumpHistory,
 } from '../playback/jumpHistory';
 import type { RecordedJumpSource } from '../playback/jumpRecord';
+import { PlayerClockProvider, usePlayerClock } from '../playback/PlayerClock';
 import { currentOpenListen, subscribeListenProgress } from '../playback/persist';
 import { resetItemPlayback } from '../playback/resetItem';
 import { useI18n } from '../i18n/I18nProvider';
@@ -45,6 +46,7 @@ import { displayTitle } from '../ui/displayTitle';
 import { InlineBanner } from '../ui/InlineBanner';
 import { JumpHistorySheet } from '../ui/JumpHistorySheet';
 import { PlaybackDock } from '../ui/PlaybackDock';
+import type { ScrubSeekSource } from '../ui/ScrubBar';
 import { PlaybackSettingsSheet, type LoopPoints } from '../ui/PlaybackSettingsSheet';
 import { ResetProgressSheet } from '../ui/ResetProgressSheet';
 import { ScreenBackdrop } from '../ui/ScreenBackdrop';
@@ -58,16 +60,145 @@ type PlayerScreenProps = NativeStackScreenProps<RootStackParamList, 'Player'> & 
   onPlayerContext: (itemId: string | null, title: string | null) => void;
 };
 
-export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScreenProps) {
+function readPlayheadMs(): number {
+  try {
+    return TrackPlayer.getProgress().position * 1000;
+  } catch {
+    return 0;
+  }
+}
+
+function readPlaying(): boolean {
+  try {
+    return TrackPlayer.isPlaying();
+  } catch {
+    return false;
+  }
+}
+
+function LoopGuard({ loop, scrubbing }: { loop: LoopPoints; scrubbing: boolean }) {
+  const { positionMs, playing } = usePlayerClock();
+  const loopGuard = useRef(false);
+
+  useEffect(() => {
+    if (loop.aMs == null || loop.bMs == null || loop.bMs <= loop.aMs || !playing || scrubbing) {
+      loopGuard.current = false;
+      return;
+    }
+    if (positionMs >= loop.bMs && !loopGuard.current) {
+      loopGuard.current = true;
+      seekToMs(loop.aMs);
+    } else if (positionMs < loop.bMs - 400) {
+      loopGuard.current = false;
+    }
+  }, [positionMs, playing, loop, scrubbing]);
+
+  return null;
+}
+
+function HeardPercent({
+  itemId,
+  stored,
+  fallbackDurationMs,
+  scrubMs,
+}: {
+  itemId: string;
+  stored: readonly ListenRange[];
+  fallbackDurationMs: number | null;
+  scrubMs: number | null;
+}) {
+  const { t } = useI18n();
+  const { positionMs, durationMs, playing } = usePlayerClock();
+  const open = currentOpenListen();
+  const include = open?.itemId === itemId ? open.range : null;
+  const playhead = scrubMs ?? positionMs;
+  const visible = projectHeardRanges(stored, include, playhead, playing && scrubMs == null);
+  const fraction = listenedFraction(visible, Math.max(durationMs, fallbackDurationMs ?? 0));
+  return <Text style={styles.heroChip}>{t('heardPercent', { percent: Math.round(fraction * 100) })}</Text>;
+}
+
+function NoteTimeHint({ hidden }: { hidden: boolean }) {
+  const { positionMs } = usePlayerClock();
+  const { t, clock, align } = useI18n();
+  if (hidden) {
+    return null;
+  }
+  return (
+    <View pointerEvents="none" style={styles.noteHintWrap}>
+      <Text style={[styles.noteHint, align]}>{t('noteAt', { time: clock(notePositionMs(positionMs)) })}</Text>
+    </View>
+  );
+}
+
+function PlayerDockHost({
+  itemId,
+  title,
+  fallbackDurationMs,
+  stored,
+  scrubMs,
+  markers,
+  onScrub,
+  onSeek,
+  onScrubPreview,
+  onScrubCancel,
+  jumpsCount,
+  onOpenJumps,
+  onOpenSettings,
+}: {
+  itemId: string;
+  title: string;
+  fallbackDurationMs: number | null;
+  stored: readonly ListenRange[];
+  scrubMs: number | null;
+  markers: readonly { id: string; positionMs: number }[];
+  onScrub: (positionMs: number | null) => void;
+  onSeek: (positionMs: number, fromMs: number, source: ScrubSeekSource) => void;
+  onScrubPreview?: (fromMs: number, toMs: number) => void;
+  onScrubCancel?: () => void;
+  jumpsCount: number;
+  onOpenJumps: () => void;
+  onOpenSettings: () => void;
+}) {
+  const { positionMs, durationMs, playing } = usePlayerClock();
+  const open = currentOpenListen();
+  const include = open?.itemId === itemId ? open.range : null;
+  const playhead = scrubMs ?? positionMs;
+  const visible = projectHeardRanges(stored, include, playhead, playing && scrubMs == null);
+  return (
+    <PlaybackDock
+      variant="full"
+      title={title}
+      durationMs={Math.max(durationMs, fallbackDurationMs ?? 0)}
+      positionMs={playhead}
+      heard={visible}
+      markers={markers}
+      scrubMs={scrubMs}
+      onScrub={onScrub}
+      onSeek={onSeek}
+      onScrubPreview={onScrubPreview}
+      onScrubCancel={onScrubCancel}
+      jumpsCount={jumpsCount}
+      onOpenJumps={onOpenJumps}
+      onOpenSettings={onOpenSettings}
+    />
+  );
+}
+
+export function PlayerScreen(props: PlayerScreenProps) {
+  return (
+    <PlayerClockProvider>
+      <PlayerScreenBody {...props} />
+    </PlayerClockProvider>
+  );
+}
+
+function PlayerScreenBody({ navigation, route, onPlayerContext }: PlayerScreenProps) {
   const { itemId, seekMs, seekToken } = route.params;
-  const playing = useIsPlaying();
-  const progress = useProgress(0.25);
   const [item, setItem] = useState<AudioItem | null>(() => getItem(itemId));
   const [notes, setNotes] = useState<Note[]>(() => listNotes(itemId));
   const [jumps, setJumps] = useState<Jump[]>(() => listJumps(itemId));
   const [jumpsOpen, setJumpsOpen] = useState(false);
   const [heard, setHeard] = useState<ListenRange[]>(() => rangesForItem(itemId));
-  const [openListen, setOpenListen] = useState<ListenRange | null>(null);
   const [skips, setSkips] = useState(() => readSkips());
   const [speed, setSpeedState] = useState(item?.speed ?? 1);
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
@@ -79,7 +210,6 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [message, setMessage] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
-  const loopGuard = useRef(false);
   const { t, clock, count, align } = useI18n();
 
   useEffect(() => {
@@ -92,6 +222,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     setItem(current);
     setNotes(listNotes(itemId));
     setHeard(rangesForItem(itemId));
+    setScrubMs(null);
     if (current) {
       setSpeedState(current.speed || 1);
       void openItem(current)
@@ -140,21 +271,37 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   }, [navigation]);
 
   useEffect(() => {
-    const apply = () => {
+    let openStart: number | null | undefined;
+    const acceptStored = (open: ListenRange | null) => {
+      const start = open?.startMs ?? null;
+      if (start === openStart) {
+        return;
+      }
+      openStart = start;
       setHeard(rangesForItem(itemId));
-      const open = currentOpenListen();
-      setOpenListen(open?.itemId === itemId ? open.range : null);
     };
-    apply();
+    const current = currentOpenListen();
+    acceptStored(current?.itemId === itemId ? current.range : null);
     const unsubscribe = subscribeListenProgress((update) => {
       if (update.itemId === itemId) {
-        setHeard(rangesForItem(itemId));
-        setOpenListen(update.open);
+        acceptStored(update.open);
       }
     });
     const handle = setInterval(() => {
-      apply();
-      setItem(getItem(itemId));
+      setItem((existing) => {
+        const next = getItem(itemId);
+        if (
+          existing &&
+          next &&
+          existing.durationMs === next.durationMs &&
+          existing.missing === next.missing &&
+          existing.title === next.title &&
+          existing.uri === next.uri
+        ) {
+          return existing;
+        }
+        return next;
+      });
     }, 5000);
     return () => {
       unsubscribe();
@@ -162,29 +309,13 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     };
   }, [itemId]);
 
-  const durationMs = Math.max(progress.duration * 1000, item?.durationMs ?? 0);
-  const positionMs = scrubMs ?? progress.position * 1000;
-
-  useEffect(() => {
-    if (loop.aMs == null || loop.bMs == null || loop.bMs <= loop.aMs || !playing || scrubMs != null) {
-      loopGuard.current = false;
-      return;
-    }
-    if (positionMs >= loop.bMs && !loopGuard.current) {
-      loopGuard.current = true;
-      seekToMs(loop.aMs);
-    } else if (positionMs < loop.bMs - 400) {
-      loopGuard.current = false;
-    }
-  }, [positionMs, playing, loop, scrubMs]);
-
   function rememberJump(fromMs: number, toMs: number, source: RecordedJumpSource, commit: 'defer' | 'now' | 'hold'): void {
     recordJumpSeek({
       itemId,
       fromMs,
       toMs,
       source,
-      commit: commit === 'hold' ? 'hold' : playing ? 'defer' : 'now',
+      commit: commit === 'hold' ? 'hold' : readPlaying() ? 'defer' : 'now',
     });
   }
 
@@ -212,7 +343,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     insertNote({
       id: createId(),
       itemId: item.id,
-      positionMs: notePositionMs(positionMs),
+      positionMs: notePositionMs(readPlayheadMs()),
       text,
       tags: '',
       createdAt: Date.now(),
@@ -239,7 +370,6 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   function confirmResetProgress(): void {
     resetItemPlayback(itemId);
     setHeard([]);
-    setOpenListen(null);
     setJumps([]);
     setScrubMs(null);
     const current = getItem(itemId);
@@ -249,12 +379,6 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     }
     setResetOpen(false);
   }
-
-  const visibleHeard = useMemo(
-    () => projectHeardRanges(heard, openListen, positionMs, playing && scrubMs == null),
-    [heard, openListen, positionMs, playing, scrubMs],
-  );
-  const heardFraction = listenedFraction(visibleHeard, durationMs);
 
   if (!item) {
     return (
@@ -294,7 +418,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             <Text style={styles.heroTitle}>{displayTitle(item.title, 56, t('untitled'))}</Text>
             <View style={styles.heroChips}>
               <Text style={styles.heroChip}>{(item.format ?? t('audioWord')).toUpperCase()}</Text>
-              <Text style={styles.heroChip}>{t('heardPercent', { percent: Math.round(heardFraction * 100) })}</Text>
+              <HeardPercent itemId={item.id} stored={heard} fallbackDurationMs={item.durationMs} scrubMs={scrubMs} />
               <Text style={styles.heroChip}>{count('notes', notes.length)}</Text>
               {missing ? <Text style={[styles.heroChip, styles.heroChipDanger]}>{t('missingFile')}</Text> : null}
             </View>
@@ -330,14 +454,18 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           <View style={styles.notesCard}>
             <Text style={[styles.notesTitle, align]}>{t('notes')}</Text>
             <View style={styles.composer}>
-              <TextInput
-                value={draft}
-                onChangeText={setDraft}
-                placeholder={t('noteAt', { time: clock(notePositionMs(positionMs)) })}
-                placeholderTextColor={colors.muted}
-                style={[styles.noteInput, align]}
-                multiline
-              />
+              <View style={styles.noteField}>
+                <TextInput
+                  value={draft}
+                  onChangeText={setDraft}
+                  placeholder=""
+                  placeholderTextColor={colors.muted}
+                  accessibilityLabel={t('notes')}
+                  style={[styles.noteInput, align]}
+                  multiline
+                />
+                <NoteTimeHint hidden={draft.length > 0} />
+              </View>
               <AppPressable
                 accessibilityRole="button"
                 haptic
@@ -358,7 +486,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => {
-                      const fromMs = progress.position * 1000;
+                      const fromMs = readPlayheadMs();
                       seekToMs(note.positionMs);
                       rememberJump(fromMs, note.positionMs, 'note', 'defer');
                     }}
@@ -387,14 +515,13 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           </View>
         </ScrollView>
 
-        <PlaybackDock
-          variant="full"
+        <PlayerDockHost
+          itemId={item.id}
           title={item.title}
-          durationMs={durationMs}
-          positionMs={positionMs}
-          heard={visibleHeard}
-          markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
+          fallbackDurationMs={item.durationMs}
+          stored={heard}
           scrubMs={scrubMs}
+          markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
           onScrub={setScrubMs}
           onSeek={(toMs, fromMs, source) => {
             seekToMs(toMs);
@@ -409,6 +536,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           }}
           onOpenSettings={() => setSettingsOpen(true)}
         />
+        <LoopGuard loop={loop} scrubbing={scrubMs != null} />
         <PlaybackSettingsSheet
           visible={settingsOpen}
           onClose={() => setSettingsOpen(false)}
@@ -429,7 +557,6 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           }}
           loop={loop}
           onLoop={setLoop}
-          positionMs={positionMs}
           skips={skips}
           onSkips={(next) => {
             writeSkips(next);
@@ -565,8 +692,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     alignItems: 'flex-end',
   },
-  noteInput: {
+  noteField: {
     flex: 1,
+  },
+  noteHintWrap: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  noteHint: {
+    color: colors.muted,
+    fontSize: 16,
+  },
+  noteInput: {
     minHeight: 48,
     maxHeight: 120,
     color: colors.text,

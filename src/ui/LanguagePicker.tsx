@@ -30,6 +30,13 @@ export function LanguageList({ selected, onSelect }: LanguageListProps) {
             onPress={() => onSelect(language.code)}
             style={[styles.row, active && styles.rowOn]}
           >
+            <Text
+              accessible={false}
+              importantForAccessibility="no"
+              style={styles.flag}
+            >
+              {language.flag}
+            </Text>
             <View style={styles.rowText}>
               <Text
                 style={[
@@ -126,6 +133,13 @@ const styles = StyleSheet.create({
   rowOn: {
     borderColor: colors.accent,
     backgroundColor: '#1A2838',
+  },
+  flag: {
+    width: 40,
+    fontSize: 28,
+    lineHeight: 36,
+    textAlign: 'center',
+    writingDirection: 'ltr',
   },
   rowText: {
     flex: 1,

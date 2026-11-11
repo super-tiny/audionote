@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState } from 'react';
 
 import { SLEEP_MINUTES, SPEEDS, replayLastTenSeconds, type SkipSettings } from '../playback/engine';
+import { usePlayerClock } from '../playback/PlayerClock';
 import { useI18n } from '../i18n/I18nProvider';
 import { directionalIcon } from './direction';
 import { AppPressable } from './AppPressable';
@@ -25,7 +26,6 @@ type PlaybackSettingsSheetProps = {
   onSleep: (minutes: number | null) => void;
   loop: LoopPoints;
   onLoop: (loop: LoopPoints) => void;
-  positionMs: number;
   skips: SkipSettings;
   onSkips: (skips: SkipSettings) => void;
 };
@@ -52,6 +52,64 @@ function MenuRow({
   );
 }
 
+function LoopPointEditor({
+  loop,
+  loopOn,
+  onLoop,
+}: {
+  loop: LoopPoints;
+  loopOn: boolean;
+  onLoop: (loop: LoopPoints) => void;
+}) {
+  const { positionMs } = usePlayerClock();
+  const { t, clock, align } = useI18n();
+  const playhead = Math.round(positionMs);
+
+  return (
+    <View style={styles.loopPanel}>
+      <View style={styles.loopToggleRow}>
+        <Text style={[styles.rowLabel, align]}>{t('loopSection')}</Text>
+        <Switch
+          value={loopOn}
+          onValueChange={(on) => {
+            if (!on) {
+              onLoop({ aMs: null, bMs: null });
+            } else if (loop.aMs == null || loop.bMs == null) {
+              onLoop({ aMs: playhead, bMs: playhead + 10_000 });
+            }
+          }}
+          trackColor={{ false: colors.line, true: colors.accentSoft }}
+          thumbColor={loopOn ? colors.accent : colors.muted}
+        />
+      </View>
+      <AppPressable accessibilityRole="button" haptic onPress={replayLastTenSeconds} style={styles.loopAction}>
+        <Text style={[styles.loopActionText, align]}>{t('replayLast10')}</Text>
+      </AppPressable>
+      <AppPressable
+        accessibilityRole="button"
+        haptic
+        onPress={() => onLoop({ ...loop, aMs: playhead })}
+        style={styles.loopAction}
+      >
+        <Text style={[styles.loopActionText, align]}>{t('setA', { time: clock(playhead) })}</Text>
+      </AppPressable>
+      <AppPressable
+        accessibilityRole="button"
+        haptic
+        onPress={() => onLoop({ ...loop, bMs: playhead })}
+        style={styles.loopAction}
+      >
+        <Text style={[styles.loopActionText, align]}>{t('setB', { time: clock(playhead) })}</Text>
+      </AppPressable>
+      {loopOn ? (
+        <Text style={[styles.loopHint, align]}>
+          {t('looping', { start: clock(loop.aMs!), end: clock(loop.bMs!) })}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export function PlaybackSettingsSheet({
   visible,
   onClose,
@@ -61,7 +119,6 @@ export function PlaybackSettingsSheet({
   onSleep,
   loop,
   onLoop,
-  positionMs,
   skips,
   onSkips,
 }: PlaybackSettingsSheetProps) {
@@ -156,49 +213,7 @@ export function PlaybackSettingsSheet({
             </View>
           ) : null}
 
-          {panel === 'loop' ? (
-            <View style={styles.loopPanel}>
-              <View style={styles.loopToggleRow}>
-                <Text style={[styles.rowLabel, align]}>{t('loopSection')}</Text>
-                <Switch
-                  value={loopOn}
-                  onValueChange={(on) => {
-                    if (!on) {
-                      onLoop({ aMs: null, bMs: null });
-                    } else if (loop.aMs == null || loop.bMs == null) {
-                      onLoop({ aMs: Math.round(positionMs), bMs: Math.round(positionMs) + 10_000 });
-                    }
-                  }}
-                  trackColor={{ false: colors.line, true: colors.accentSoft }}
-                  thumbColor={loopOn ? colors.accent : colors.muted}
-                />
-              </View>
-              <AppPressable accessibilityRole="button" haptic onPress={replayLastTenSeconds} style={styles.loopAction}>
-                <Text style={[styles.loopActionText, align]}>{t('replayLast10')}</Text>
-              </AppPressable>
-              <AppPressable
-                accessibilityRole="button"
-                haptic
-                onPress={() => onLoop({ ...loop, aMs: Math.round(positionMs) })}
-                style={styles.loopAction}
-              >
-                <Text style={[styles.loopActionText, align]}>{t('setA', { time: clock(positionMs) })}</Text>
-              </AppPressable>
-              <AppPressable
-                accessibilityRole="button"
-                haptic
-                onPress={() => onLoop({ ...loop, bMs: Math.round(positionMs) })}
-                style={styles.loopAction}
-              >
-                <Text style={[styles.loopActionText, align]}>{t('setB', { time: clock(positionMs) })}</Text>
-              </AppPressable>
-              {loopOn ? (
-                <Text style={[styles.loopHint, align]}>
-                  {t('looping', { start: clock(loop.aMs!), end: clock(loop.bMs!) })}
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
+          {panel === 'loop' ? <LoopPointEditor loop={loop} loopOn={loopOn} onLoop={onLoop} /> : null}
 
           {panel === 'skip' ? (
             <View style={styles.skipPanel}>

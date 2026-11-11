@@ -169,6 +169,40 @@ export function rangesForItem(itemId: string): StoredRange[] {
   ).map((row) => ({ startMs: row.start_ms, endMs: row.end_ms, sessionAt: row.session_at }));
 }
 
+/** SQLite on Android rejects statements with too many bound variables. */
+const RANGE_ID_CHUNK = 500;
+
+/** One query for the library list, instead of a query per lesson. */
+export function rangesForItems(itemIds: readonly string[]): Map<string, StoredRange[]> {
+  const grouped = new Map<string, StoredRange[]>();
+  for (const id of itemIds) {
+    if (!grouped.has(id)) {
+      grouped.set(id, []);
+    }
+  }
+  if (grouped.size === 0) {
+    return grouped;
+  }
+  const db = getDatabase();
+  const ids = [...grouped.keys()];
+  for (let offset = 0; offset < ids.length; offset += RANGE_ID_CHUNK) {
+    const chunk = ids.slice(offset, offset + RANGE_ID_CHUNK);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const rows = db.getAllSync<{ item_id: string; start_ms: number; end_ms: number; session_at: number }>(
+      `SELECT item_id, start_ms, end_ms, session_at FROM listen_range WHERE item_id IN (${placeholders}) ORDER BY start_ms`,
+      chunk,
+    );
+    for (const row of rows) {
+      grouped.get(row.item_id)?.push({
+        startMs: row.start_ms,
+        endMs: row.end_ms,
+        sessionAt: row.session_at,
+      });
+    }
+  }
+  return grouped;
+}
+
 export function listListenHistory(itemId: string | null): ListenPortion[] {
   const sql = itemId
     ? `SELECT listen_range.id AS id,

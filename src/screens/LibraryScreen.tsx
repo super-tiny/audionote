@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useState } from 'react';
-import { useIsPlaying, useProgress } from '@rntp/player';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useIsPlaying } from '@rntp/player';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
@@ -10,9 +10,10 @@ import {
   deleteItem,
   listItems,
   rangesForItem,
+  rangesForItems,
   rangesSince,
 } from '../db/library';
-import type { AudioItem } from '../db/types';
+import type { AudioItem, StoredRange } from '../db/types';
 import { importAudioFiles, locateAudioFile, type ImportSummary } from '../library/import';
 import { refreshPresence } from '../library/files';
 import { coveredMs, listenedFraction, projectHeardRanges } from '../library/ranges';
@@ -38,6 +39,22 @@ import { colors, elevation, radii, spacing } from '../ui/theme';
 type Row = {
   item: AudioItem;
   heard: number;
+  ranges: StoredRange[];
+};
+
+type LibraryCardProps = {
+  item: AudioItem;
+  ranges: readonly StoredRange[];
+  heard: number;
+  active: boolean;
+  playing: boolean;
+  positionMs: number;
+  pending: boolean;
+  busy: boolean;
+  onOpen: (item: AudioItem) => void;
+  onLocate: (itemId: string) => void;
+  onReset: (item: AudioItem) => void;
+  onDelete: (item: AudioItem, pending: boolean) => void;
 };
 
 type LibraryScreenProps = NativeStackScreenProps<RootStackParamList, 'Library'> & {
@@ -52,17 +69,136 @@ function startOfToday(): number {
   return start.getTime();
 }
 
-function loadLibrary(query: string): { rows: Row[]; resume: AudioItem[]; todayMs: number } {
-  const rows = listItems(query).map((item) => ({
-    item,
-    heard: listenedFraction(rangesForItem(item.id), item.durationMs),
-  }));
+function loadLibrary(query: string): { rows: Row[]; resume: AudioItem[]; todayMs: number; todayRanges: StoredRange[] } {
+  const items = listItems(query);
+  const byItem = rangesForItems(items.map((item) => item.id));
+  const open = currentOpenListen();
+  const rows = items.map((item) => {
+    const ranges = byItem.get(item.id) ?? [];
+    const include = open?.itemId === item.id ? open.range : null;
+    return {
+      item,
+      ranges,
+      heard: listenedFraction(
+        projectHeardRanges(ranges, include, include ? Math.max(item.positionMs, include.endMs) : 0, include != null),
+        item.durationMs,
+      ),
+    };
+  });
+  const todayRanges = rangesSince(startOfToday());
+  const todayInclude = open && open.sessionAt >= startOfToday() ? open.range : null;
   return {
     rows,
     resume: query.trim() ? [] : continueListening(),
-    todayMs: coveredMs(rangesSince(startOfToday())),
+    todayRanges,
+    todayMs: coveredMs(projectHeardRanges(todayRanges, todayInclude, todayInclude?.endMs ?? 0, todayInclude != null)),
   };
 }
+
+function displayedMinutes(ms: number): number {
+  return Math.round(ms / 60000);
+}
+
+const LibraryCard = memo(function LibraryCard({
+  item,
+  ranges,
+  heard,
+  active,
+  playing,
+  positionMs,
+  pending,
+  busy,
+  onOpen,
+  onLocate,
+  onReset,
+  onDelete,
+}: LibraryCardProps) {
+  const { t, clock, isRtl, align } = useI18n();
+  const open = active && playing ? currentOpenListen() : null;
+  const include = open?.itemId === item.id ? open.range : null;
+  const playheadMs = include ? Math.max(positionMs, include.endMs) : positionMs;
+  const heardFraction =
+    include && item.durationMs
+      ? listenedFraction(projectHeardRanges(ranges, include, playheadMs, true), item.durationMs)
+      : heard;
+  const positionFraction = item.durationMs && item.durationMs > 0 ? Math.min(1, playheadMs / item.durationMs) : 0;
+  const title = displayTitle(item.title, 44, t('untitled'));
+
+  return (
+    <View style={[styles.card, active && styles.cardActive, elevation.card]}>
+      <AppPressable accessibilityRole="button" haptic onPress={() => onOpen(item)} style={styles.cardMain}>
+        <View style={styles.cardRow}>
+          <ArtworkAvatar title={item.title} size={52} />
+          <View style={styles.cardBody}>
+            <View style={styles.titleRow}>
+              <Text numberOfLines={2} style={[styles.cardTitle, align]}>
+                {title}
+              </Text>
+              {active ? (
+                <View style={styles.nowBadge}>
+                  <Text style={styles.nowBadgeText}>{t('playing')}</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.metaRow}>
+              <Text style={styles.formatPill}>{(item.format ?? t('audioWord')).toUpperCase()}</Text>
+              <Text style={[styles.meta, align]}>
+                {item.durationMs ? clock(item.durationMs) : '—'}
+                {item.durationMs ? ` · ${t('heardPercent', { percent: Math.round(heardFraction * 100) })}` : ''}
+              </Text>
+            </View>
+            <Text style={[styles.positionMeta, align]}>{t('positionAt', { time: clock(playheadMs) })}</Text>
+            <View style={styles.track}>
+              <View style={[styles.heard, { width: `${heardFraction * 100}%` }]} />
+              <View style={[styles.position, { left: `${positionFraction * 100}%` }]} />
+            </View>
+            {item.missing ? (
+              <View style={styles.missingRow}>
+                <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
+                <Text style={styles.missing}>{t('fileMissing')}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Ionicons name={directionalIcon('chevron-forward', isRtl)} size={20} color={colors.muted} style={styles.chevron} />
+        </View>
+      </AppPressable>
+      <View style={styles.actions}>
+        {item.missing ? (
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={() => onLocate(item.id)}
+            style={styles.actionBtn}
+          >
+            <Ionicons name="locate-outline" size={16} color={colors.accent} />
+            <Text style={styles.actionText}>{t('locate')}</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('resetFor', { title })}
+          onPress={() => onReset(item)}
+          style={styles.actionBtn}
+        >
+          <Ionicons name="refresh-outline" size={16} color={colors.muted} />
+          <Text style={styles.actionText}>{t('reset')}</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => onDelete(item, pending)}
+          style={[styles.actionBtn, pending && styles.actionBtnDanger]}
+        >
+          <Ionicons
+            name={pending ? 'warning-outline' : 'trash-outline'}
+            size={16}
+            color={pending ? colors.danger : colors.muted}
+          />
+          <Text style={[styles.actionText, pending && styles.dangerText]}>{pending ? t('confirm') : t('delete')}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+});
 
 function summaryText(summary: ImportSummary, t: ReturnType<typeof useI18n>['t']): string {
   const parts = [
@@ -92,10 +228,13 @@ export function LibraryScreen({
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
-  const { t, clock, hours, isRtl, align, language } = useI18n();
+  const [live, setLive] = useState<{ itemId: string; positionMs: number } | null>(null);
+  const { t, clock, hours, align, language } = useI18n();
   const playing = useIsPlaying();
-  const progress = useProgress(playing ? 0.5 : 30);
-  const livePositionMs = progress.position * 1000;
+  const todayRangesRef = useRef<StoredRange[]>([]);
+  const openStartRef = useRef<number | null | undefined>(undefined);
+  const playerItemIdRef = useRef(playerItemId);
+  playerItemIdRef.current = playerItemId;
 
   useEffect(() => {
     const handle = setTimeout(() => setApplied(query), 200);
@@ -104,12 +243,17 @@ export function LibraryScreen({
 
   useEffect(() => {
     const loaded = loadLibrary(applied);
+    openStartRef.current = currentOpenListen()?.range.startMs ?? null;
+    todayRangesRef.current = loaded.todayRanges;
     setRows(loaded.rows);
     setResume(loaded.resume);
     setTodayMs(loaded.todayMs);
   }, [applied, revision]);
 
-  const libraryKey = rows.map((row) => `${row.item.id}:${row.item.uri}:${row.item.missing}`).join('|');
+  const libraryKey = useMemo(
+    () => rows.map((row) => `${row.item.id}:${row.item.uri}:${row.item.missing}`).join('|'),
+    [rows],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -124,41 +268,76 @@ export function LibraryScreen({
   }, [libraryKey]);
 
   useEffect(() => {
-    return subscribeListenProgress((update) => {
-      setRows((current) => {
-        let changed = false;
-        const next = current.map((row) => {
-          if (row.item.id !== update.itemId) {
-            return row;
+    let cancelled = false;
+    const unsubscribe = subscribeListenProgress((update) => {
+      const open = update.open;
+      const start = open?.startMs ?? null;
+      const refresh = start !== openStartRef.current;
+      openStartRef.current = start;
+      if (open) {
+        const positionMs = open.endMs;
+        setLive((current) => {
+          if (
+            current &&
+            current.itemId === update.itemId &&
+            Math.floor(current.positionMs / 1000) === Math.floor(positionMs / 1000)
+          ) {
+            return current;
           }
-          const heard = listenedFraction(rangesForItem(update.itemId), row.item.durationMs);
-          if (heard === row.heard) {
-            return row;
-          }
-          changed = true;
-          return { ...row, heard };
+          return { itemId: update.itemId, positionMs };
         });
-        return changed ? next : current;
+      } else {
+        queueMicrotask(() => {
+          if (!cancelled) {
+            setResume(continueListening());
+          }
+        });
+      }
+      const stored = refresh ? rangesForItem(update.itemId) : null;
+      if (refresh) {
+        todayRangesRef.current = rangesSince(startOfToday());
+      }
+      setRows((current) => {
+        const index = current.findIndex((row) => row.item.id === update.itemId);
+        if (index < 0) {
+          return current;
+        }
+        const row = current[index]!;
+        const ranges = stored ?? row.ranges;
+        const positionMs = open?.endMs ?? row.item.positionMs;
+        const heard = listenedFraction(
+          projectHeardRanges(ranges, open, positionMs, open != null),
+          row.item.durationMs,
+        );
+        if (ranges === row.ranges && Math.round(heard * 100) === Math.round(row.heard * 100)) {
+          return current;
+        }
+        const next = current.slice();
+        next[index] = { ...row, ranges, heard };
+        return next;
       });
-      setTodayMs(coveredMs(rangesSince(startOfToday())));
-      setResume(continueListening());
+      const liveOpen = currentOpenListen();
+      const include =
+        open && liveOpen?.itemId === update.itemId && liveOpen.sessionAt >= startOfToday() ? open : null;
+      const nextToday = coveredMs(
+        projectHeardRanges(todayRangesRef.current, include, include?.endMs ?? 0, include != null),
+      );
+      setTodayMs((current) => (displayedMinutes(current) === displayedMinutes(nextToday) ? current : nextToday));
     });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
-  const todayLabelMs = useMemo(() => {
-    if (!playing) {
-      return todayMs;
-    }
-    const open = currentOpenListen();
-    const include = open && open.sessionAt >= startOfToday() ? open.range : null;
-    return coveredMs(projectHeardRanges(rangesSince(startOfToday()), include, livePositionMs, include != null));
-  }, [playing, livePositionMs, todayMs]);
-
-  function openItem(item: AudioItem): void {
-    actionHaptic();
-    onPlayerContext(item.id, item.title);
-    navigation.navigate({ name: 'Player', params: { itemId: item.id }, merge: false });
-  }
+  const openItem = useCallback(
+    (item: AudioItem) => {
+      actionHaptic();
+      onPlayerContext(item.id, item.title);
+      navigation.navigate({ name: 'Player', params: { itemId: item.id }, merge: false });
+    },
+    [navigation, onPlayerContext],
+  );
 
   async function onImport(): Promise<void> {
     setBusy(true);
@@ -176,25 +355,74 @@ export function LibraryScreen({
     }
   }
 
-  async function onLocate(itemId: string): Promise<void> {
-    setBusy(true);
-    try {
-      const found = await locateAudioFile(itemId);
-      setStatus(found ? t('fileLinked') : t('couldNotReadFile'));
+  const onLocate = useCallback(
+    (itemId: string) => {
+      void (async () => {
+        setBusy(true);
+        try {
+          const found = await locateAudioFile(itemId);
+          setStatus(found ? t('fileLinked') : t('couldNotReadFile'));
+          setRevision((value) => value + 1);
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : t('couldNotLocate'));
+        } finally {
+          setBusy(false);
+        }
+      })();
+    },
+    [t],
+  );
+
+  const onReset = useCallback((item: AudioItem) => {
+    setResetTarget(item);
+  }, []);
+
+  const onDelete = useCallback(
+    (item: AudioItem, pending: boolean) => {
+      if (!pending) {
+        setPendingDeleteId(item.id);
+        return;
+      }
+      deleteItem(item.id);
+      setPendingDeleteId(null);
+      if (playerItemIdRef.current === item.id) {
+        onPlayerContext(null, null);
+      }
       setRevision((value) => value + 1);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : t('couldNotLocate'));
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    [onPlayerContext],
+  );
+
+  const renderLesson = useCallback(
+    ({ item: row }: { item: Row }) => {
+      const active = playerItemId === row.item.id;
+      const liveHere = active && live?.itemId === row.item.id;
+      return (
+        <LibraryCard
+          item={row.item}
+          ranges={row.ranges}
+          heard={row.heard}
+          active={active}
+          playing={active && playing}
+          positionMs={liveHere && live ? live.positionMs : row.item.positionMs}
+          pending={pendingDeleteId === row.item.id}
+          busy={busy}
+          onOpen={openItem}
+          onLocate={onLocate}
+          onReset={onReset}
+          onDelete={onDelete}
+        />
+      );
+    },
+    [playerItemId, live, playing, pendingDeleteId, busy, openItem, onLocate, onReset, onDelete],
+  );
 
   return (
     <ScreenBackdrop>
       <View style={styles.screen}>
       <ScreenHeader
         title="AudioNote"
-        subtitle={t('todayListened', { time: hours(todayLabelMs) })}
+        subtitle={t('todayListened', { time: hours(todayMs) })}
         onMenu={() => setMenuOpen(true)}
         actions={[
           {
@@ -230,7 +458,7 @@ export function LibraryScreen({
           {
             icon: 'time-outline',
             label: t('todaysListening'),
-            detail: hours(todayLabelMs),
+            detail: hours(todayMs),
             disabled: true,
             onPress: () => undefined,
           },
@@ -243,7 +471,7 @@ export function LibraryScreen({
           {
             icon: 'language-outline',
             label: t('language'),
-            detail: language?.nativeName,
+            detail: language ? `${language.flag} ${language.nativeName}` : undefined,
             onPress: () => setLanguageOpen(true),
           },
           {
@@ -296,7 +524,8 @@ export function LibraryScreen({
                 <Text style={[styles.section, align]}>{t('continueListening')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.resumeScroll}>
                   {resume.map((item) => {
-                    const resumeMs = item.id === playerItemId ? livePositionMs : item.positionMs;
+                    const liveHere = item.id === playerItemId && live?.itemId === item.id;
+                    const resumeMs = liveHere && live ? live.positionMs : item.positionMs;
                     return (
                       <AppPressable key={item.id} haptic onPress={() => openItem(item)} style={styles.resumeCard}>
                         <ArtworkAvatar title={item.title} size={36} />
@@ -326,113 +555,8 @@ export function LibraryScreen({
             </Text>
           </View>
         }
-        renderItem={({ item: row }) => {
-          const { item, heard } = row;
-          const isActive = playerItemId === item.id;
-          const rowPositionMs = isActive ? livePositionMs : item.positionMs;
-          const positionFraction =
-            item.durationMs && item.durationMs > 0 ? Math.min(1, rowPositionMs / item.durationMs) : 0;
-          const open = isActive ? currentOpenListen() : null;
-          const heardFraction =
-            isActive && playing && item.durationMs
-              ? listenedFraction(
-                  projectHeardRanges(
-                    rangesForItem(item.id),
-                    open?.itemId === item.id ? open.range : null,
-                    livePositionMs,
-                    true,
-                  ),
-                  item.durationMs,
-                )
-              : heard;
-          return (
-            <View style={[styles.card, isActive && styles.cardActive, elevation.card]}>
-              <AppPressable accessibilityRole="button" haptic onPress={() => openItem(item)} style={styles.cardMain}>
-                <View style={styles.cardRow}>
-                  <ArtworkAvatar title={item.title} size={52} />
-                  <View style={styles.cardBody}>
-                    <View style={styles.titleRow}>
-                      <Text numberOfLines={2} style={[styles.cardTitle, align]}>
-                        {displayTitle(item.title, 44, t('untitled'))}
-                      </Text>
-                      {isActive ? (
-                        <View style={styles.nowBadge}>
-                          <Text style={styles.nowBadgeText}>{t('playing')}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <View style={styles.metaRow}>
-                      <Text style={styles.formatPill}>{(item.format ?? t('audioWord')).toUpperCase()}</Text>
-                      <Text style={[styles.meta, align]}>
-                        {item.durationMs ? clock(item.durationMs) : '—'}
-                        {item.durationMs ? ` · ${t('heardPercent', { percent: Math.round(heardFraction * 100) })}` : ''}
-                      </Text>
-                    </View>
-                    <Text style={[styles.positionMeta, align]}>{t('positionAt', { time: clock(rowPositionMs) })}</Text>
-                    <View style={styles.track}>
-                      <View style={[styles.heard, { width: `${heardFraction * 100}%` }]} />
-                      <View style={[styles.position, { left: `${positionFraction * 100}%` }]} />
-                    </View>
-                    {item.missing ? (
-                      <View style={styles.missingRow}>
-                        <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
-                        <Text style={styles.missing}>{t('fileMissing')}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <Ionicons name={directionalIcon('chevron-forward', isRtl)} size={20} color={colors.muted} style={styles.chevron} />
-                </View>
-              </AppPressable>
-              <View style={styles.actions}>
-                {item.missing ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={busy}
-                    onPress={() => void onLocate(item.id)}
-                    style={styles.actionBtn}
-                  >
-                    <Ionicons name="locate-outline" size={16} color={colors.accent} />
-                    <Text style={styles.actionText}>{t('locate')}</Text>
-                  </Pressable>
-                ) : null}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={t('resetFor', { title: displayTitle(item.title, 44, t('untitled')) })}
-                  onPress={() => setResetTarget(item)}
-                  style={styles.actionBtn}
-                >
-                  <Ionicons name="refresh-outline" size={16} color={colors.muted} />
-                  <Text style={styles.actionText}>{t('reset')}</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
-                    if (pendingDeleteId === item.id) {
-                      deleteItem(item.id);
-                      setPendingDeleteId(null);
-                      if (playerItemId === item.id) {
-                        onPlayerContext(null, null);
-                      }
-                      setRevision((value) => value + 1);
-                    } else {
-                      setPendingDeleteId(item.id);
-                    }
-                  }}
-                  style={[styles.actionBtn, pendingDeleteId === item.id && styles.actionBtnDanger]}
-                >
-                  <Ionicons
-                    name={pendingDeleteId === item.id ? 'warning-outline' : 'trash-outline'}
-                    size={16}
-                    color={pendingDeleteId === item.id ? colors.danger : colors.muted}
-                  />
-                  <Text style={[styles.actionText, pendingDeleteId === item.id && styles.dangerText]}>
-                    {pendingDeleteId === item.id ? t('confirm') : t('delete')}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          );
-        }}
+        extraData={live?.positionMs ?? null}
+        renderItem={renderLesson}
       />
       <ResetProgressSheet
         visible={resetTarget != null}

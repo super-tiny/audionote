@@ -8,15 +8,17 @@ export type LanguageOption = {
   code: Locale;
   nativeName: string;
   englishName: string;
+  /** Decorative regional flag. Arabic has no single flag; Saudi Arabia is the usual picker glyph. */
+  flag: string;
   direction: LayoutDirection;
 };
 
 export const LANGUAGES: readonly LanguageOption[] = [
-  { code: 'en', nativeName: 'English', englishName: 'English', direction: 'ltr' },
-  { code: 'fr', nativeName: 'Français', englishName: 'French', direction: 'ltr' },
-  { code: 'de', nativeName: 'Deutsch', englishName: 'German', direction: 'ltr' },
-  { code: 'ar', nativeName: 'العربية', englishName: 'Arabic', direction: 'rtl' },
-  { code: 'fa', nativeName: 'فارسی', englishName: 'Persian', direction: 'rtl' },
+  { code: 'en', nativeName: 'English', englishName: 'English', flag: '🇬🇧', direction: 'ltr' },
+  { code: 'fr', nativeName: 'Français', englishName: 'French', flag: '🇫🇷', direction: 'ltr' },
+  { code: 'de', nativeName: 'Deutsch', englishName: 'German', flag: '🇩🇪', direction: 'ltr' },
+  { code: 'ar', nativeName: 'العربية', englishName: 'Arabic', flag: '🇸🇦', direction: 'rtl' },
+  { code: 'fa', nativeName: 'فارسی', englishName: 'Persian', flag: '🇮🇷', direction: 'rtl' },
 ];
 
 const RTL_DIGITS: Partial<Record<Locale, string>> = {

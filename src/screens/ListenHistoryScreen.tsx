@@ -23,7 +23,7 @@ import {
 } from '../library/listenHistory';
 import { displayTitle } from '../ui/displayTitle';
 import type { RootStackParamList } from '../navigation/types';
-import { flushProgress } from '../playback/persist';
+import { flushProgress, subscribeListenProgress } from '../playback/persist';
 import { useI18n } from '../i18n/I18nProvider';
 import type { MessageKey } from '../i18n/messages';
 import { AppPressable } from '../ui/AppPressable';
@@ -105,8 +105,15 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
     useCallback(() => {
       flushProgress();
       reload();
-      const timer = setInterval(reload, 2000);
-      return () => clearInterval(timer);
+      let last = Date.now();
+      return subscribeListenProgress(() => {
+        const now = Date.now();
+        if (now - last < 4000) {
+          return;
+        }
+        last = now;
+        reload();
+      });
     }, [reload]),
   );
 

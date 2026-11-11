@@ -43,14 +43,9 @@ type PlaybackDockMiniProps = {
 
 export type PlaybackDockProps = PlaybackDockFullProps | PlaybackDockMiniProps;
 
-export function PlaybackDock(props: PlaybackDockProps) {
+function useTransport() {
   const playing = useIsPlaying();
-  const progress = useProgress(0.5);
-  const insets = useSafeAreaInsets();
   const skips = readSkips();
-  const { t, clock, align } = useI18n();
-  const miniDurationMs = Math.max(0, progress.duration * 1000);
-  const miniPositionMs = progress.position * 1000;
 
   function onPlayPause(): void {
     actionHaptic();
@@ -67,35 +62,50 @@ export function PlaybackDock(props: PlaybackDockProps) {
     skipBy(skips.forwardMs);
   }
 
-  if (props.variant === 'mini') {
-    return (
-      <View style={[styles.miniWrap, elevation.card, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-        <Pressable accessibilityRole="button" onPress={props.onOpen} style={styles.miniMain}>
-          <ArtworkAvatar title={props.title} size={44} />
-          <View style={styles.miniMeta}>
-            <Text numberOfLines={1} style={[styles.miniTitle, align]}>
-              {displayTitle(props.title, 40, t('untitled'))}
-            </Text>
-            <Text style={[styles.miniTime, align]}>
-              {clock(miniPositionMs)}
-              {miniDurationMs ? ` / ${clock(miniDurationMs)}` : ''}
-            </Text>
-          </View>
-        </Pressable>
-        <View style={styles.miniControls}>
-          <AppPressable accessibilityLabel={t('rewindSeconds', { count: Math.round(skips.backMs / 1000) })} haptic onPress={onSkipBack} style={styles.controlBtn}>
-            <Ionicons name="play-back" size={26} color={colors.text} />
-          </AppPressable>
-          <AppPressable accessibilityLabel={playing ? t('pause') : t('play')} haptic onPress={onPlayPause} style={styles.playBtn}>
-            <Ionicons name={playing ? 'pause' : 'play'} size={26} color={colors.background} />
-          </AppPressable>
-          <AppPressable accessibilityLabel={t('skipForwardSeconds', { count: Math.round(skips.forwardMs / 1000) })} haptic onPress={onSkipForward} style={styles.controlBtn}>
-            <Ionicons name="play-forward" size={26} color={colors.text} />
-          </AppPressable>
+  return { playing, skips, onPlayPause, onSkipBack, onSkipForward };
+}
+
+function MiniPlaybackDock({ title, onOpen }: { title: string; onOpen: () => void }) {
+  const progress = useProgress(1);
+  const insets = useSafeAreaInsets();
+  const { playing, skips, onPlayPause, onSkipBack, onSkipForward } = useTransport();
+  const { t, clock, align } = useI18n();
+  const miniDurationMs = Math.max(0, progress.duration * 1000);
+  const miniPositionMs = progress.position * 1000;
+
+  return (
+    <View style={[styles.miniWrap, elevation.card, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <Pressable accessibilityRole="button" onPress={onOpen} style={styles.miniMain}>
+        <ArtworkAvatar title={title} size={44} />
+        <View style={styles.miniMeta}>
+          <Text numberOfLines={1} style={[styles.miniTitle, align]}>
+            {displayTitle(title, 40, t('untitled'))}
+          </Text>
+          <Text style={[styles.miniTime, align]}>
+            {clock(miniPositionMs)}
+            {miniDurationMs ? ` / ${clock(miniDurationMs)}` : ''}
+          </Text>
         </View>
+      </Pressable>
+      <View style={styles.miniControls}>
+        <AppPressable accessibilityLabel={t('rewindSeconds', { count: Math.round(skips.backMs / 1000) })} haptic onPress={onSkipBack} style={styles.controlBtn}>
+          <Ionicons name="play-back" size={26} color={colors.text} />
+        </AppPressable>
+        <AppPressable accessibilityLabel={playing ? t('pause') : t('play')} haptic onPress={onPlayPause} style={styles.playBtn}>
+          <Ionicons name={playing ? 'pause' : 'play'} size={26} color={colors.background} />
+        </AppPressable>
+        <AppPressable accessibilityLabel={t('skipForwardSeconds', { count: Math.round(skips.forwardMs / 1000) })} haptic onPress={onSkipForward} style={styles.controlBtn}>
+          <Ionicons name="play-forward" size={26} color={colors.text} />
+        </AppPressable>
       </View>
-    );
-  }
+    </View>
+  );
+}
+
+function FullPlaybackDock(props: PlaybackDockFullProps) {
+  const insets = useSafeAreaInsets();
+  const { playing, skips, onPlayPause, onSkipBack, onSkipForward } = useTransport();
+  const { t, clock } = useI18n();
 
   return (
     <View style={[styles.fullWrap, elevation.card, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
@@ -147,6 +157,13 @@ export function PlaybackDock(props: PlaybackDockProps) {
       </View>
     </View>
   );
+}
+
+export function PlaybackDock(props: PlaybackDockProps) {
+  if (props.variant === 'mini') {
+    return <MiniPlaybackDock title={props.title} onOpen={props.onOpen} />;
+  }
+  return <FullPlaybackDock {...props} />;
 }
 
 const styles = StyleSheet.create({
