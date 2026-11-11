@@ -130,13 +130,14 @@ Lessons stay in their original location. Import uses `ACTION_OPEN_DOCUMENT` on A
 
 Duration is read from the first or last 512KB: an M4A `mvhd` atom, an MP3 Xing frame count, or a CBR estimate from the MPEG frame length. The player later replaces that hint with its own duration and does not overwrite the format column. M4A/AAC is the format to prefer for a multi-hour lesson. VBR MP3 without a Xing header can seek and measure poorly.
 
-Tables, migrated by the `schema_version` row (currently 3):
+Tables, migrated by the `schema_version` row (currently 4):
 
 | Table | Role |
 | --- | --- |
 | `audio_item` | URI, bookmark, fingerprint, title, duration, format, missing flag |
 | `playback_state` | Resume position and speed |
-| `listen_range` | Heard intervals. A seek gap above 4 seconds starts a new range, so progress percent is not the resume cursor |
+| `listen_range` | Heard intervals. A seek gap above 4 seconds starts a new range, so progress percent is not the resume cursor. A later pass that starts within a minute and continues the previous end extends that row (`anchor_at` is the latest piece). Replays stay separate |
+| `listen_mark` | Spans played more than once. Rebuilt when a row is saved or a growing row crosses another row, not on every progress tick |
 | `note` | Text at a timeline position |
 | `jump` | Per-lesson seek history: position before the jump, position landed on, newest first. The latest 50 rows are kept |
 | `setting` | Skip-back and skip-forward intervals |

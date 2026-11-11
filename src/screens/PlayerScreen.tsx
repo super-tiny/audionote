@@ -11,9 +11,12 @@ import {
   insertNote,
   listNotes,
   markMissing,
+  marksForItem,
   rangesForItem,
+  subscribeListenMarks,
 } from '../db/library';
-import type { AudioItem, Jump, Note } from '../db/types';
+import type { AudioItem, Jump, Note, StoredRange } from '../db/types';
+import type { ReplaySpan } from '../library/listenHistory';
 import { listenedFraction, projectHeardRanges, type ListenRange } from '../library/ranges';
 import { locateAudioFile } from '../library/import';
 import { createId } from '../media/identity';
@@ -36,6 +39,7 @@ import {
   subscribeJumpHistory,
 } from '../playback/jumpHistory';
 import type { RecordedJumpSource } from '../playback/jumpRecord';
+import { isHighlightHintHidden, setHighlightHintHidden } from '../playback/highlightHint';
 import { currentOpenListen, subscribeListenProgress } from '../playback/persist';
 import { resetItemPlayback } from '../playback/resetItem';
 import { AppPressable } from '../ui/AppPressable';
@@ -65,7 +69,8 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [notes, setNotes] = useState<Note[]>(() => listNotes(itemId));
   const [jumps, setJumps] = useState<Jump[]>(() => listJumps(itemId));
   const [jumpsOpen, setJumpsOpen] = useState(false);
-  const [heard, setHeard] = useState<ListenRange[]>(() => rangesForItem(itemId));
+  const [heard, setHeard] = useState<StoredRange[]>(() => rangesForItem(itemId));
+  const [important, setImportant] = useState<ReplaySpan[]>(() => marksForItem(itemId));
   const [openListen, setOpenListen] = useState<ListenRange | null>(null);
   const [skips, setSkips] = useState(() => readSkips());
   const [speed, setSpeedState] = useState(item?.speed ?? 1);
@@ -78,7 +83,18 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   const [message, setMessage] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [highlightHintHidden, setHighlightHintHiddenState] = useState(() => isHighlightHintHidden());
   const loopGuard = useRef(false);
+
+  function dismissHighlightHint(): void {
+    setHighlightHintHidden(true);
+    setHighlightHintHiddenState(true);
+  }
+
+  function showHighlightHint(): void {
+    setHighlightHintHidden(false);
+    setHighlightHintHiddenState(false);
+  }
 
   useEffect(() => {
     onPlayerContext(itemId, item?.title ?? null);
@@ -89,7 +105,9 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     const current = getItem(itemId);
     setItem(current);
     setNotes(listNotes(itemId));
-    setHeard(rangesForItem(itemId));
+    const stored = rangesForItem(itemId);
+    setHeard((current) => (current === stored ? current : stored));
+    setImportant(marksForItem(itemId));
     if (current) {
       setSpeedState(current.speed || 1);
       void openItem(current)
@@ -139,15 +157,22 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
 
   useEffect(() => {
     const apply = () => {
-      setHeard(rangesForItem(itemId));
+      const stored = rangesForItem(itemId);
+      setHeard((current) => (current === stored ? current : stored));
       const open = currentOpenListen();
       setOpenListen(open?.itemId === itemId ? open.range : null);
     };
     apply();
     const unsubscribe = subscribeListenProgress((update) => {
       if (update.itemId === itemId) {
-        setHeard(rangesForItem(itemId));
+        const stored = rangesForItem(itemId);
+        setHeard((current) => (current === stored ? current : stored));
         setOpenListen(update.open);
+      }
+    });
+    const unsubscribeMarks = subscribeListenMarks((changedId) => {
+      if (changedId === itemId) {
+        setImportant(marksForItem(itemId));
       }
     });
     const handle = setInterval(() => {
@@ -156,6 +181,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
     }, 5000);
     return () => {
       unsubscribe();
+      unsubscribeMarks();
       clearInterval(handle);
     };
   }, [itemId]);
@@ -237,6 +263,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
   function confirmResetProgress(): void {
     resetItemPlayback(itemId);
     setHeard([]);
+    setImportant([]);
     setOpenListen(null);
     setJumps([]);
     setScrubMs(null);
@@ -391,6 +418,7 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
           durationMs={durationMs}
           positionMs={positionMs}
           heard={visibleHeard}
+          important={important}
           markers={notes.map((note) => ({ id: note.id, positionMs: note.positionMs }))}
           scrubMs={scrubMs}
           onScrub={setScrubMs}
@@ -406,6 +434,9 @@ export function PlayerScreen({ navigation, route, onPlayerContext }: PlayerScree
             setJumpsOpen(true);
           }}
           onOpenSettings={() => setSettingsOpen(true)}
+          importantHintHidden={highlightHintHidden}
+          onDismissImportantHint={dismissHighlightHint}
+          onShowImportantHint={showHighlightHint}
         />
         <PlaybackSettingsSheet
           visible={settingsOpen}

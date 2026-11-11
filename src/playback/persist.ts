@@ -1,6 +1,14 @@
 import TrackPlayer, { PlaybackState } from '@rntp/player';
 
-import { insertListenRange, savePlayback, setDurationMs, updateListenRangeEnd } from '../db/library';
+import {
+  extendListenMarks,
+  rangeGrowthBounds,
+  saveListenRange,
+  savePlayback,
+  setDurationMs,
+  syncListenMarks,
+  updateListenRangeEnd,
+} from '../db/library';
 import {
   endedListenPositionMs,
   MIN_RANGE_MS,
@@ -19,6 +27,12 @@ type TrackedRange = {
   startMs: number;
   endMs: number;
   sessionAt: number;
+  /** Latest end of another row this pass already overlaps. Null when it is not a replay. */
+  overlapCapMs: number | null;
+  /** Media time where the next stored row starts. Crossing it changes important spans. */
+  nextRangeStartMs: number;
+  /** End time already reflected in the saved important spans. */
+  marksEndMs: number;
 };
 
 let openRange: OpenListenRange | null = null;
@@ -126,6 +140,36 @@ function sameSpan(range: OpenListenRange, row: TrackedRange): boolean {
   return row.itemId === range.itemId && row.sessionAt === range.sessionAt && row.startMs === range.startMs;
 }
 
+function withBounds(row: TrackedRange): TrackedRange {
+  const bounds = rangeGrowthBounds(row.itemId, row.rowId, row.startMs, row.endMs);
+  return {
+    ...row,
+    overlapCapMs: bounds.overlapCapMs,
+    nextRangeStartMs: bounds.nextRangeStartMs,
+    marksEndMs: row.endMs,
+  };
+}
+
+function commitEnd(row: TrackedRange, endMs: number): TrackedRange {
+  updateListenRangeEnd(row.rowId, endMs, row.itemId);
+  if (endMs > row.nextRangeStartMs) {
+    syncListenMarks(row.itemId);
+    return withBounds({ ...row, endMs });
+  }
+  let next: TrackedRange = { ...row, endMs };
+  if (row.overlapCapMs != null && endMs > row.marksEndMs) {
+    const limit = Math.min(endMs, row.overlapCapMs);
+    if (limit > row.marksEndMs) {
+      extendListenMarks(row.itemId, row.marksEndMs, limit);
+      next = { ...next, marksEndMs: limit };
+    }
+    if (endMs >= row.overlapCapMs) {
+      next = { ...next, overlapCapMs: null };
+    }
+  }
+  return next;
+}
+
 function writeRange(range: OpenListenRange, closing: boolean): void {
   if (ignoring(range.itemId)) {
     return;
@@ -137,17 +181,20 @@ function writeRange(range: OpenListenRange, closing: boolean): void {
     return;
   }
   if (tracked && sameSpan(range, tracked)) {
-    updateListenRangeEnd(tracked.rowId, range.endMs);
-    tracked = { ...tracked, endMs: range.endMs };
+    tracked = commitEnd(tracked, range.endMs);
   } else {
-    const rowId = insertListenRange(range.itemId, range.startMs, range.endMs, range.sessionAt);
-    tracked = {
+    const rowId = saveListenRange(range.itemId, range.startMs, range.endMs, range.sessionAt);
+    syncListenMarks(range.itemId);
+    tracked = withBounds({
       rowId,
       itemId: range.itemId,
       startMs: range.startMs,
       endMs: range.endMs,
       sessionAt: range.sessionAt,
-    };
+      overlapCapMs: null,
+      nextRangeStartMs: Number.POSITIVE_INFINITY,
+      marksEndMs: range.endMs,
+    });
   }
   if (closing) {
     lastClosed = tracked;
@@ -181,12 +228,12 @@ function creditTail(itemId: string, endMs: number): boolean {
   if (!target || endMs <= target.endMs || endMs - target.endMs > SEEK_GAP_MS) {
     return false;
   }
-  updateListenRangeEnd(target.rowId, endMs);
+  const extended = commitEnd(target, endMs);
   if (tracked?.rowId === target.rowId) {
-    tracked = { ...target, endMs };
+    tracked = extended;
   }
   if (lastClosed?.rowId === target.rowId) {
-    lastClosed = { ...target, endMs };
+    lastClosed = extended;
   }
   if (
     openRange &&
