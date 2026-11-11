@@ -421,7 +421,7 @@ export function LibraryScreen({
     <ScreenBackdrop>
       <View style={styles.screen}>
       <ScreenHeader
-        title="AudioNote"
+        title={t('appName')}
         subtitle={t('todayListened', { time: hours(todayMs) })}
         onMenu={() => setMenuOpen(true)}
         actions={[

@@ -147,7 +147,7 @@ export function PlaybackSettingsSheet({
             <AppPressable accessibilityRole="button" onPress={() => setPanel('root')} style={styles.subBack}>
               <Ionicons name={directionalIcon('chevron-back', isRtl)} size={22} color={colors.text} />
             </AppPressable>
-            <Text style={styles.subTitle}>
+            <Text style={[styles.subTitle, align]}>
               {panel === 'speed' ? t('playbackSpeed') : panel === 'sleep' ? t('sleepTimer') : panel === 'loop' ? t('loop') : t('skipIntervals')}
             </Text>
           </View>
@@ -217,7 +217,7 @@ export function PlaybackSettingsSheet({
 
           {panel === 'skip' ? (
             <View style={styles.skipPanel}>
-              <Text style={styles.skipHeading}>{t('rewind')}</Text>
+              <Text style={[styles.skipHeading, align]}>{t('rewind')}</Text>
               <View style={styles.skipRow}>
                 <AppPressable
                   accessibilityRole="button"
@@ -235,7 +235,7 @@ export function PlaybackSettingsSheet({
                   <Text style={styles.skipStepText}>+5s</Text>
                 </AppPressable>
               </View>
-              <Text style={styles.skipHeading}>{t('skipForward')}</Text>
+              <Text style={[styles.skipHeading, align]}>{t('skipForward')}</Text>
               <View style={styles.skipRow}>
                 <AppPressable
                   accessibilityRole="button"
@@ -307,6 +307,7 @@ const styles = StyleSheet.create({
     marginStart: -8,
   },
   subTitle: {
+    flex: 1,
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',

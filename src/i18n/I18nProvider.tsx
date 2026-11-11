@@ -64,9 +64,15 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       t: (key, vars) => translate(active, key, vars),
       count: (base, amount) => translateCount(active, base, amount),
       clock: (ms) => localizeDigits(active, formatClock(ms)),
-      hours: (ms) => localizeDigits(active, formatHours(ms)),
+      hours: (ms) => {
+        const formatted = localizeDigits(active, formatHours(ms));
+        // Keep a trailing Latin unit on the inline end of an RTL run.
+        return direction === 'rtl' ? `\u200F${formatted}` : formatted;
+      },
       align: {
-        textAlign: direction === 'rtl' ? 'right' : 'left',
+        // `start` is the physical right edge when the paragraph is RTL.
+        // `right` is resolved back to the left in that same layout.
+        textAlign: 'start',
         writingDirection: direction,
       },
     };

@@ -268,7 +268,7 @@ export function ListenHistoryScreen({ navigation, route, onPlayerContext }: List
               );
             })}
           </View>
-          <Text style={styles.summary}>
+          <Text style={[styles.summary, align]}>
             {count('portions', visible.length)}
             {visible.length ? ` · ${clock(totalMs)}` : ''}
           </Text>
@@ -367,10 +367,11 @@ function PortionRow({
 }
 
 function TimeStat({ label, value }: { label: string; value: string }) {
+  const { align } = useI18n();
   return (
     <View style={styles.timeStat}>
-      <Text style={styles.timeLabel}>{label}</Text>
-      <Text style={styles.timeValue}>{value}</Text>
+      <Text style={[styles.timeLabel, align]}>{label}</Text>
+      <Text style={[styles.timeValue, align]}>{value}</Text>
     </View>
   );
 }

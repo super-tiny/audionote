@@ -1,6 +1,9 @@
 import type { Locale } from './languages';
 
+const RTL_APP_NAME = 'آدیونوت (AudioNote)';
+
 const en = {
+  appName: 'AudioNote',
   menu: 'Menu',
   closeMenu: 'Close menu',
   openMenu: 'Open menu',
@@ -177,6 +180,7 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const fr: Record<MessageKey, string> = {
+  appName: 'AudioNote',
   menu: 'Menu',
   closeMenu: 'Fermer le menu',
   openMenu: 'Ouvrir le menu',
@@ -352,6 +356,7 @@ const fr: Record<MessageKey, string> = {
 };
 
 const de: Record<MessageKey, string> = {
+  appName: 'AudioNote',
   menu: 'Menü',
   closeMenu: 'Menü schließen',
   openMenu: 'Menü öffnen',
@@ -526,6 +531,7 @@ const de: Record<MessageKey, string> = {
 };
 
 const ar: Record<MessageKey, string> = {
+  appName: RTL_APP_NAME,
   menu: 'القائمة',
   closeMenu: 'إغلاق القائمة',
   openMenu: 'فتح القائمة',
@@ -540,7 +546,7 @@ const ar: Record<MessageKey, string> = {
   todaysListening: 'استماع اليوم',
   listeningHistory: 'سجل الاستماع',
   portionsYouHeard: 'المقاطع التي سمعتها',
-  about: 'حول AudioNote',
+  about: `حول ${RTL_APP_NAME}`,
   aboutMenuDetail: 'غيتهاب، المساهمة، المشاكل، الأفكار',
   searchTitles: 'ابحث في العناوين',
   working: 'جارٍ العمل…',
@@ -588,18 +594,18 @@ const ar: Record<MessageKey, string> = {
   notesHint: 'تُحفظ الملاحظة قبل اللحظة التي تضغط فيها إضافة ببضع ثوانٍ.',
   closeAbout: 'إغلاق حول التطبيق',
   aboutLead:
-    'يساعدك AudioNote على الاستماع إلى الدروس المحلية الطويلة، والعودة إلى آخر موضع، ومعرفة ما سمعته فعلًا، ومراجعة قفزاتك، وتدوين ملاحظات مرتبطة بالوقت — كل ذلك على جهازك.',
+    `يساعدك ${RTL_APP_NAME} على الاستماع إلى الدروس المحلية الطويلة، والعودة إلى آخر موضع، ومعرفة ما سمعته فعلًا، ومراجعة قفزاتك، وتدوين ملاحظات مرتبطة بالوقت — كل ذلك على جهازك.`,
   version: 'الإصدار {version}',
   openSourceTitle: 'مفتوح المصدر على GitHub',
-  openSourceBody: 'يُطوَّر AudioNote بشكل علني. نرحب بالمساهمات وبلاغات الأخطاء والأفكار.',
+  openSourceBody: `يُطوَّر ${RTL_APP_NAME} بشكل علني. نرحب بالمساهمات وبلاغات الأخطاء والأفكار.`,
   viewRepository: 'عرض المستودع',
   contribute: 'المساهمة',
   contributeDetail: 'طلبات الدمج والتحسينات مرحّب بها',
   reportIssue: 'الإبلاغ عن مشكلة',
   reportIssueDetail: 'هل هناك عطل؟ أخبرنا على GitHub',
   requestFeature: 'طلب ميزة',
-  requestFeatureDetail: 'أخبرنا بما يجعل AudioNote أنسب لك',
-  aboutFooter: 'شكرًا لاستخدامك AudioNote ولمساعدتك في تحسينه لكل من يتعلم من التسجيلات الطويلة.',
+  requestFeatureDetail: `أخبرنا بما يجعل ${RTL_APP_NAME} أنسب لك`,
+  aboutFooter: `شكرًا لاستخدامك ${RTL_APP_NAME} ولمساعدتك في تحسينه لكل من يتعلم من التسجيلات الطويلة.`,
   close: 'إغلاق',
   dismiss: 'تجاهل',
   playbackSpeed: 'سرعة التشغيل',
@@ -698,6 +704,7 @@ const ar: Record<MessageKey, string> = {
 };
 
 const fa: Record<MessageKey, string> = {
+  appName: RTL_APP_NAME,
   menu: 'منو',
   closeMenu: 'بستن منو',
   openMenu: 'باز کردن منو',
@@ -712,7 +719,7 @@ const fa: Record<MessageKey, string> = {
   todaysListening: 'گوش دادن امروز',
   listeningHistory: 'تاریخچه گوش دادن',
   portionsYouHeard: 'بخش‌هایی که شنیده‌اید',
-  about: 'درباره AudioNote',
+  about: `درباره ${RTL_APP_NAME}`,
   aboutMenuDetail: 'گیت‌هاب، مشارکت، مشکلات، ایده‌ها',
   searchTitles: 'جستجوی عنوان',
   working: 'در حال انجام…',
@@ -760,19 +767,18 @@ const fa: Record<MessageKey, string> = {
   notesHint: 'یادداشت چند ثانیه پیش از لحظه‌ای که افزودن را می‌زنید ثبت می‌شود.',
   closeAbout: 'بستن درباره',
   aboutLead:
-    'AudioNote کمک می‌کند درس‌های محلی طولانی را بشنوید، به آخرین نقطه برگردید، ببینید واقعاً چقدر شنیده‌اید، جهش‌ها را مرور کنید و یادداشت زمان‌دار بگذارید — همه روی دستگاه خودتان.',
+    `${RTL_APP_NAME} کمک می‌کند درس‌های محلی طولانی را بشنوید، به آخرین نقطه برگردید، ببینید واقعاً چقدر شنیده‌اید، جهش‌ها را مرور کنید و یادداشت زمان‌دار بگذارید — همه روی دستگاه خودتان.`,
   version: 'نسخه {version}',
   openSourceTitle: 'متن‌باز در گیت‌هاب',
-  openSourceBody: 'AudioNote به‌صورت باز توسعه داده می‌شود. مشارکت، گزارش خطا و ایده خوشامد است.',
+  openSourceBody: `${RTL_APP_NAME} به‌صورت باز توسعه داده می‌شود. مشارکت، گزارش خطا و ایده خوشامد است.`,
   viewRepository: 'دیدن مخزن',
   contribute: 'مشارکت',
   contributeDetail: 'درخواست‌های ادغام و بهبود خوشامد است',
   reportIssue: 'گزارش مشکل',
   reportIssueDetail: 'چیزی خراب است؟ در گیت‌هاب بگویید',
   requestFeature: 'پیشنهاد قابلیت',
-  requestFeatureDetail: 'بگویید چه چیزی AudioNote را برای شما بهتر می‌کند',
-  aboutFooter:
-    'سپاس که از AudioNote استفاده می‌کنید و به بهتر شدنش برای همه کسانی که با صدای طولانی یاد می‌گیرند کمک می‌کنید.',
+  requestFeatureDetail: `بگویید چه چیزی ${RTL_APP_NAME} را برای شما بهتر می‌کند`,
+  aboutFooter: `سپاس که از ${RTL_APP_NAME} استفاده می‌کنید و به بهتر شدنش برای همه کسانی که با صدای طولانی یاد می‌گیرند کمک می‌کنید.`,
   close: 'بستن',
   dismiss: 'بستن',
   playbackSpeed: 'سرعت پخش',

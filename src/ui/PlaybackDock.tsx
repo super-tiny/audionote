@@ -109,7 +109,7 @@ function MiniPlaybackDock({ title, onOpen }: { title: string; onOpen: () => void
 function FullPlaybackDock(props: PlaybackDockFullProps) {
   const insets = useSafeAreaInsets();
   const { playing, skips, onPlayPause, onSkipBack, onSkipForward } = useTransport();
-  const { t, clock } = useI18n();
+  const { t, clock, isRtl } = useI18n();
 
   return (
     <View style={[styles.fullWrap, elevation.card, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
@@ -126,7 +126,7 @@ function FullPlaybackDock(props: PlaybackDockFullProps) {
       />
       {props.important && props.important.length > 0 && !props.importantHintHidden ? (
         <View style={styles.importantHintRow}>
-          <Text style={styles.importantHint}>{t('highlightHint')}</Text>
+          <Text style={[styles.importantHint, isRtl && styles.importantHintRtl]}>{t('highlightHint')}</Text>
           {props.onDismissImportantHint ? (
             <Pressable
               accessibilityRole="button"
@@ -144,9 +144,9 @@ function FullPlaybackDock(props: PlaybackDockFullProps) {
           accessibilityRole="button"
           accessibilityLabel={t('showHighlightHint')}
           onPress={props.onShowImportantHint}
-          style={styles.importantHintShow}
+          style={[styles.importantHintShow, isRtl && styles.importantHintShowRtl]}
         >
-          <Text style={styles.importantHintShowText}>{t('showHighlightHint')}</Text>
+          <Text style={[styles.importantHintShowText, isRtl && styles.importantHintRtl]}>{t('showHighlightHint')}</Text>
         </Pressable>
       ) : null}
       <View style={styles.times}>
@@ -217,6 +217,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  // The full dock is forced LTR, so `right` stays the physical right edge.
+  importantHintRtl: {
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   importantHintClose: {
     minWidth: 32,
     minHeight: 32,
@@ -227,6 +232,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     minHeight: 28,
     justifyContent: 'center',
+  },
+  importantHintShowRtl: {
+    alignSelf: 'flex-end',
   },
   importantHintShowText: {
     color: colors.muted,

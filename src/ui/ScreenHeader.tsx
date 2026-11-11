@@ -43,7 +43,7 @@ export function ScreenHeader({
         {onBack ? (
           <Pressable accessibilityRole="button" accessibilityLabel={resolvedBack || t('back')} onPress={onBack} style={styles.back}>
             <Ionicons name={icon} size={24} color={colors.accent} />
-            {resolvedBack ? <Text style={styles.backText}>{resolvedBack}</Text> : null}
+            {resolvedBack ? <Text style={[styles.backText, align]}>{resolvedBack}</Text> : null}
           </Pressable>
         ) : onMenu ? (
           <Pressable accessibilityRole="button" accessibilityLabel={t('openMenu')} onPress={onMenu} style={styles.menu}>

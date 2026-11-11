@@ -14,7 +14,7 @@ type LanguageListProps = {
 };
 
 export function LanguageList({ selected, onSelect }: LanguageListProps) {
-  const { isRtl } = useI18n();
+  const { align } = useI18n();
 
   return (
     <View style={styles.list}>
@@ -41,13 +41,14 @@ export function LanguageList({ selected, onSelect }: LanguageListProps) {
               <Text
                 style={[
                   styles.nativeName,
-                  { textAlign: isRtl ? 'right' : 'left', writingDirection: language.direction },
+                  align,
+                  { writingDirection: language.direction },
                 ]}
               >
                 {language.nativeName}
               </Text>
               {language.nativeName !== language.englishName ? (
-                <Text style={[styles.englishName, { textAlign: isRtl ? 'right' : 'left' }]}>
+                <Text style={[styles.englishName, align, { writingDirection: 'ltr' }]}>
                   {language.englishName}
                 </Text>
               ) : null}
@@ -76,7 +77,7 @@ export function LanguageGate({ onSelect }: { onSelect: (locale: Locale) => void 
 
 export function LanguageSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
-  const { locale, setLocale, direction, t } = useI18n();
+  const { locale, setLocale, direction, t, align } = useI18n();
 
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
@@ -84,8 +85,8 @@ export function LanguageSheet({ visible, onClose }: { visible: boolean; onClose:
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('close')} />
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
           <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>{t('language')}</Text>
-          <Text style={styles.sheetHint}>{t('languageHint')}</Text>
+          <Text style={[styles.sheetTitle, align]}>{t('language')}</Text>
+          <Text style={[styles.sheetHint, align]}>{t('languageHint')}</Text>
           <LanguageList
             selected={locale}
             onSelect={(next) => {

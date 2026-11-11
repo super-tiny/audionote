@@ -37,6 +37,22 @@ test('arabic and persian lay out right to left', () => {
   );
 });
 
+test('arabic and persian use the localized product name', () => {
+  const brand = 'آدیونوت (AudioNote)';
+  assert.equal(messages.ar.appName, brand);
+  assert.equal(messages.fa.appName, brand);
+  for (const locale of ['en', 'fr', 'de'] as const) {
+    assert.equal(messages[locale].appName, 'AudioNote');
+    assert.equal(messages[locale].about.includes('آدیونوت'), false);
+  }
+  for (const locale of ['ar', 'fa'] as const) {
+    for (const key of ['about', 'aboutLead', 'openSourceBody', 'requestFeatureDetail', 'aboutFooter'] as const) {
+      assert.equal(messages[locale][key].includes(brand), true);
+      assert.equal(messages[locale][key].includes('AudioNote '), false);
+    }
+  }
+});
+
 test('every language has the same messages', () => {
   const keys = Object.keys(messages.en).sort();
   for (const language of LANGUAGES) {
